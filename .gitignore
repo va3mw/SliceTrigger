@@ -1,0 +1,6 @@
+# local config (contains relay/HTTP passwords)
+slicetrigger.json
+slicetrigger.json.tmp
+*.zip
+/slicetrigger
+.DS_Store
