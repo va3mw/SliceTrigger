@@ -34,9 +34,42 @@ Use `fire 3,5` to run several actions from one key. If a key does nothing, run
 `C:\Ham\SliceTrigger.exe fire 3` from a Command Prompt: if the log pane shows the
 action, the bridge is fine and the N1MM line needs adjusting.
 
+## If the function key opens a second SliceTrigger window
+
+If pressing the key shows "Cannot listen on 127.0.0.1:8765 ... Is SliceTrigger
+already running?", the logger started the exe without a usable `fire`
+argument. The message box shows the arguments that copy received. Two
+workarounds that do not depend on arguments being passed:
+
+- **Named copy:** copy the exe to `SliceTrigger-fire-1.exe` (same folder) and
+  put that in the function key line. A copy named `...-fire-<id>.exe` fires
+  that action and exits. Use `-fire-3,5` for several.
+- **Batch file:** create `fire1.bat` containing
+  `start "" "C:\Ham\SliceTrigger.exe" fire 1` and put the .bat in the function
+  key line (a console window flashes briefly).
+
+## Trigger port
+
+The **Trigger port** (default 8765) is the local port the running SliceTrigger
+window listens on for "fire" requests. You can normally leave it alone.
+
+When N1MM runs `SliceTrigger.exe fire 1`, that second copy of the exe does not
+talk to the radio. It sends a request to the already-running window at
+`http://127.0.0.1:8765/fire/1` and exits. The running window, which keeps the
+connection to the radio open, carries out the action. That is why a key press
+is fast, and why SliceTrigger must be running while you operate.
+
+- It only accepts connections from the same PC (127.0.0.1); nothing else on
+  your network can reach it.
+- Change it only if another program already uses 8765. SliceTrigger shows
+  "Cannot listen on 127.0.0.1:8765" at startup when that happens. Enter a new
+  port and click **Apply**.
+- The `fire` command reads the port from the same config file, so your N1MM
+  lines do not need editing after a change.
+
 ## Trigger interface
 
-The running instance listens on `http://127.0.0.1:8765` (port configurable):
+The running instance answers these requests on that port:
 
 | Request | Effect |
 |---|---|

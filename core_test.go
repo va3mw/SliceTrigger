@@ -346,6 +346,34 @@ func TestRxAntRoundRobin(t *testing.T) {
 	}
 }
 
+func TestFireRequest(t *testing.T) {
+	cases := []struct {
+		exe  string
+		args []string
+		spec string
+		port int
+		ok   bool
+	}{
+		{`C:\Ham\SliceTrigger.exe`, []string{"fire", "3"}, "3", 0, true},
+		{`C:\Ham\SliceTrigger.exe`, []string{"fire", "3", "5"}, "3,5", 0, true},
+		{`C:\Ham\SliceTrigger.exe`, []string{"fire 3,5"}, "3,5", 0, true},
+		{`C:\Ham\SliceTrigger.exe`, []string{`"fire`, `1"`}, "1", 0, true},
+		{`C:\Ham\SliceTrigger.exe`, []string{"FIRE", "-port", "9000", "Ant2"}, "Ant2", 9000, true},
+		{`C:\Ham\SliceTrigger.exe`, nil, "", 0, false},
+		{`C:\Ham\SliceTrigger.exe`, []string{"something"}, "", 0, false},
+		{`C:\Ham\SliceTrigger-fire-1.exe`, nil, "1", 0, true},
+		{`C:\Ham\fire3,5.exe`, nil, "3,5", 0, true},
+		{`C:\Ham\Campfire.exe`, nil, "", 0, false},
+		{`C:\Ham\SliceTrigger-fire-2.exe`, []string{"fire", "7"}, "7", 0, true},
+	}
+	for _, c := range cases {
+		spec, port, ok := fireRequest(c.exe, c.args)
+		if spec != c.spec || port != c.port || ok != c.ok {
+			t.Errorf("fireRequest(%q, %q) = %q, %d, %v", c.exe, c.args, spec, port, ok)
+		}
+	}
+}
+
 func TestUnescape(t *testing.T) {
 	got, err := unescape(`AB\r\n\x00\xfF\t\\x`)
 	want := "AB\r\n\x00\xff\t\\x"

@@ -169,7 +169,9 @@ func (g *gui) startTrigger(port int) {
 	if err != nil {
 		g.logf("Trigger listener failed: %v", err)
 		walk.MsgBox(g.mw, "SliceTrigger",
-			fmt.Sprintf("Cannot listen on 127.0.0.1:%d.\n\n%v\n\nIs SliceTrigger already running?", port, err),
+			fmt.Sprintf("Cannot listen on 127.0.0.1:%d.\n\n%v\n\nIs SliceTrigger already running?\n\n"+
+				"This copy was started with arguments: %q\n(a function key should start it with \"fire <id>\")",
+				port, err, os.Args[1:]),
 			walk.MsgBoxIconWarning)
 		return
 	}
