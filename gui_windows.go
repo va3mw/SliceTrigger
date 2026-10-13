@@ -414,7 +414,8 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 		urlEdit, userEdit, passEdit, addrEdit    *walk.LineEdit
 		dataEdit                                 *walk.LineEdit
 		typeCB, sliceCB, antCB, modeCB           *walk.ComboBox
-		replyCB                                  *walk.CheckBox
+		replyCB, rrCB                            *walk.CheckBox
+		antChecks                                = make([]*walk.CheckBox, len(antChoices))
 		grpSlice, grpAnt, grpCmd, grpKM, grpURL  *walk.Composite
 		grpAuth, grpTCP                          *walk.Composite
 	)
@@ -423,6 +424,22 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 		typeNames[i] = typeLabels[t]
 	}
 	grid := Grid{Columns: 2, MarginsZero: true}
+
+	inCycle := map[string]bool{}
+	for _, v := range splitList(a.Cycle) {
+		inCycle[strings.ToUpper(v)] = true
+	}
+	antCheckWidgets := make([]Widget, len(antChoices))
+	for i, name := range antChoices {
+		antCheckWidgets[i] = CheckBox{AssignTo: &antChecks[i], Text: name, Checked: inCycle[name]}
+	}
+	updateCycle := func() {
+		rr := rrCB.Checked()
+		antCB.SetEnabled(!rr)
+		for _, cb := range antChecks {
+			cb.SetEnabled(rr)
+		}
+	}
 
 	updateVisible := func() {
 		t := actionTypes[typeCB.CurrentIndex()]
@@ -451,7 +468,18 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 		case TypeFlexRxAnt:
 			n.Slice = sliceChoices[sliceCB.CurrentIndex()]
 			n.Antenna = strings.TrimSpace(antCB.Text())
-			if n.Antenna == "" {
+			if rrCB.Checked() {
+				var picked []string
+				for i, cb := range antChecks {
+					if cb.Checked() {
+						picked = append(picked, antChoices[i])
+					}
+				}
+				if len(picked) < 2 {
+					return n, fmt.Errorf("Round robin needs at least two antennas checked.")
+				}
+				n.Cycle = strings.Join(picked, ",")
+			} else if n.Antenna == "" {
 				return n, fmt.Errorf("Choose an antenna.")
 			}
 		case TypeFlexRaw:
@@ -519,6 +547,15 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 			Composite{AssignTo: &grpAnt, Layout: grid, Children: []Widget{
 				Label{Text: "RX antenna:"},
 				ComboBox{AssignTo: &antCB, Model: antChoices, Editable: true},
+				Label{Text: ""},
+				CheckBox{AssignTo: &rrCB, Text: "Round robin: each press selects the next checked antenna",
+					Checked: len(inCycle) > 0, OnCheckedChanged: func() {
+						if antChecks[len(antChecks)-1] != nil {
+							updateCycle()
+						}
+					}},
+				Label{Text: ""},
+				Composite{Layout: HBox{MarginsZero: true}, Children: antCheckWidgets},
 			}},
 			Composite{AssignTo: &grpCmd, Layout: grid, Children: []Widget{
 				Label{Text: "Command(s):"},
@@ -580,6 +617,7 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 	}
 	antCB.SetText(orDefault(a.Antenna, "ANT1"))
 	updateVisible()
+	updateCycle()
 	if dlg.Run() != walk.DlgCmdOK {
 		return a, false
 	}

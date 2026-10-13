@@ -53,7 +53,7 @@ The reply is 200 if everything succeeded, 404 for an unknown action, 500 if an a
 
 | Type | What is sent |
 |---|---|
-| Flex RX antenna | `slice set <index> rxant=<ant>`; slice A..H or Active |
+| Flex RX antenna | `slice set <index> rxant=<ant>`; slice A..H or Active. Fixed antenna, or round robin through the antennas you tick |
 | Flex raw command | one or more API commands separated by `;`, `{slice}` = resolved slice index; stops at the first error |
 | KMtronic relay | `http://<ip>/FF0101` on, `FF0100` off, `FFE0xx` pattern (bit 0 = relay 1), `FFE000` all off |
 | HTTP GET | any URL, optional basic auth |
@@ -64,6 +64,13 @@ in SmartSDR), never the TX slice. With a Station set, only slices owned by that
 SmartSDR client are considered. Without one, "Active" fails if more than one
 client has an active slice (multiFLEX), and a letter picks the lowest-numbered
 match, so set the Station when running multiFLEX.
+
+Round robin: tick "Round robin" and at least two antennas in the action. Each
+press reads the slice's current RX antenna and selects the next ticked one,
+wrapping at the end. Because it starts from what the radio reports, it stays in
+step if you change the antenna in SmartSDR; if the current antenna is not one
+of the ticked ones, the press selects the first. Antennas the radio does not
+list for that slice (`ant_list`) are skipped.
 
 ## Config
 
@@ -110,4 +117,5 @@ tested against the mock radio, not real hardware:
 - A slice is dropped from the table on `in_use=0`, a client on `client <handle> disconnected`.
 - Slices are matched to a station by comparing the slice's `client_handle` with the handle in `client 0x<handle> connected ... station=<name>`.
 - A `ping` command is sent every 10 s as keepalive; only a *missing* reply (5 s) drops the connection, an error reply does not.
+- Slice status carries the current RX antenna as `rxant=` and the selectable ones as a comma separated `ant_list=`.
 - Firmware that does not report `index_letter` falls back to A=0, B=1, ...

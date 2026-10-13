@@ -332,6 +332,23 @@ func (f *Flex) Command(cmd string, timeout time.Duration) (FlexReply, error) {
 	}
 }
 
+// SliceValue returns one tracked status value of a slice ("" if unknown).
+func (f *Flex) SliceValue(idx int, key string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.slices[idx][key]
+}
+
+// setSliceValue records a value we just set, so a second key press does not
+// have to wait for the radio's status update.
+func (f *Flex) setSliceValue(idx int, key, value string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s := f.slices[idx]; s != nil {
+		s[key] = value
+	}
+}
+
 // stationName decodes the radio's 0x7F-for-space encoding.
 func stationName(s string) string {
 	return strings.TrimSpace(strings.ReplaceAll(s, "\x7f", " "))

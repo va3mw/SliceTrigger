@@ -272,6 +272,80 @@ func TestKMtronicURL(t *testing.T) {
 	}
 }
 
+func TestNextAntenna(t *testing.T) {
+	list := []string{"ANT1", "ANT2", "RX_A"}
+	cases := []struct {
+		cur   string
+		avail []string
+		want  string
+	}{
+		{"ANT1", nil, "ANT2"},
+		{"ant2", nil, "RX_A"},
+		{"RX_A", nil, "ANT1"}, // wraps
+		{"XVTA", nil, "ANT1"}, // current not in the list
+		{"", nil, "ANT1"},
+		{"ANT1", []string{"ANT1", "RX_A", "XVTA"}, "RX_A"}, // ANT2 not offered
+		{"ANT1", []string{"XVTB"}, "ANT2"},                 // nothing usable: ignore filter
+	}
+	for _, c := range cases {
+		if got := nextAntenna(list, c.cur, c.avail); got != c.want {
+			t.Errorf("nextAntenna(%q, %v) = %q, want %q", c.cur, c.avail, got, c.want)
+		}
+	}
+}
+
+func (m *mockRadio) rxants(idx int) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	prefix := fmt.Sprintf("slice set %d rxant=", idx)
+	for _, c := range m.cmds {
+		if strings.HasPrefix(c, prefix) {
+			out = append(out, strings.TrimPrefix(c, prefix))
+		}
+	}
+	return out
+}
+
+func TestRxAntRoundRobin(t *testing.T) {
+	m := newMockRadio(t)
+	cfg := &Config{Station: "SHACK PC", Actions: []Act{
+		{ID: 6, Name: "NextAnt", Type: TypeFlexRxAnt, Slice: "Active", Cycle: "ANT1, ANT2,RX_A"},
+	}}
+	b := NewBridge(cfg, "")
+	connectFlex(t, b.Flex, m)
+	fire := func() {
+		t.Helper()
+		if res := b.Fire("6"); len(res) != 1 || !res[0].OK {
+			t.Fatalf("fire: %v", res)
+		}
+	}
+
+	// Active slice is 1 and starts on ANT1. The mock sends no status after a
+	// set, so stepping relies on the locally recorded value.
+	for i := 0; i < 4; i++ {
+		fire()
+	}
+	// Antenna changed by hand in SmartSDR to one outside the list: restart at the first.
+	b.Flex.handleStatus("slice 1 rxant=XVTA")
+	fire()
+	// Radio reports ANT2 is not available on this slice: skip it.
+	b.Flex.handleStatus("slice 1 ant_list=ANT1,RX_A,XVTA")
+	fire()
+	// Active slice moves to 0 (on ANT1): the cycle follows that slice.
+	b.Flex.handleStatus("slice 1 active=0")
+	b.Flex.handleStatus("slice 0 active=1")
+	fire()
+
+	want1 := "ANT2 RX_A ANT1 ANT2 ANT1 RX_A"
+	if got := strings.Join(m.rxants(1), " "); got != want1 {
+		t.Errorf("slice 1 sequence %q, want %q", got, want1)
+	}
+	if got := strings.Join(m.rxants(0), " "); got != "ANT2" {
+		t.Errorf("slice 0 sequence %q, want ANT2", got)
+	}
+}
+
 func TestUnescape(t *testing.T) {
 	got, err := unescape(`AB\r\n\x00\xfF\t\\x`)
 	want := "AB\r\n\x00\xff\t\\x"

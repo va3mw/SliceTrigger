@@ -50,6 +50,7 @@ type Act struct {
 	// Flex
 	Slice   string `json:"slice,omitempty"`   // A..H or Active
 	Antenna string `json:"antenna,omitempty"` // flex_rxant
+	Cycle   string `json:"cycle,omitempty"`   // flex_rxant round robin: "ANT1,ANT2,RX_A"
 	Command string `json:"command,omitempty"` // flex_raw, ';' separated
 
 	// KMtronic
@@ -73,6 +74,9 @@ type Act struct {
 func (a Act) Summary() string {
 	switch a.Type {
 	case TypeFlexRxAnt:
+		if list := splitList(a.Cycle); len(list) > 0 {
+			return fmt.Sprintf("slice %s rxant round robin: %s", orDefault(a.Slice, "Active"), strings.Join(list, " > "))
+		}
 		return fmt.Sprintf("slice %s rxant=%s", orDefault(a.Slice, "Active"), a.Antenna)
 	case TypeFlexRaw:
 		return a.Command
@@ -95,6 +99,43 @@ func orDefault(s, d string) string {
 		return d
 	}
 	return s
+}
+
+// splitList splits a comma separated list, dropping empty entries.
+func splitList(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// nextAntenna picks the entry after cur in list, wrapping around. If cur is
+// not in the list the first entry is used. Entries the radio does not offer
+// for this slice (avail, from ant_list) are skipped when avail is known.
+func nextAntenna(list []string, cur string, avail []string) string {
+	if len(avail) > 0 {
+		var usable []string
+		for _, a := range list {
+			for _, v := range avail {
+				if strings.EqualFold(a, v) {
+					usable = append(usable, a)
+					break
+				}
+			}
+		}
+		if len(usable) > 0 {
+			list = usable
+		}
+	}
+	for i, a := range list {
+		if strings.EqualFold(a, cur) {
+			return list[(i+1)%len(list)]
+		}
+	}
+	return list[0]
 }
 
 // kmtronicURL builds the relay URL for a KMtronic WEB board.
@@ -236,6 +277,8 @@ type Bridge struct {
 	Flex *Flex
 	Logf func(format string, args ...any)
 
+	antMu sync.Mutex // serializes RX antenna changes so rapid presses step one at a time
+
 	mu   sync.Mutex
 	cfg  *Config
 	path string
@@ -324,16 +367,25 @@ func (b *Bridge) Run(a Act) (string, error) {
 
 	switch a.Type {
 	case TypeFlexRxAnt:
-		if strings.TrimSpace(a.Antenna) == "" {
-			return "", errors.New("antenna is empty")
-		}
+		b.antMu.Lock()
+		defer b.antMu.Unlock()
 		idx, err := b.Flex.Resolve(a.Slice, station)
 		if err != nil {
 			return "", err
 		}
-		cmd := fmt.Sprintf("slice set %d rxant=%s", idx, strings.TrimSpace(a.Antenna))
-		_, err = b.Flex.Command(cmd, flexTimeout)
-		return cmd, err
+		ant := strings.TrimSpace(a.Antenna)
+		if list := splitList(a.Cycle); len(list) > 0 {
+			ant = nextAntenna(list, b.Flex.SliceValue(idx, "rxant"), splitList(b.Flex.SliceValue(idx, "ant_list")))
+		}
+		if ant == "" {
+			return "", errors.New("antenna is empty")
+		}
+		cmd := fmt.Sprintf("slice set %d rxant=%s", idx, ant)
+		if _, err = b.Flex.Command(cmd, flexTimeout); err != nil {
+			return cmd, err
+		}
+		b.Flex.setSliceValue(idx, "rxant", ant)
+		return cmd, nil
 	case TypeFlexRaw:
 		var sent []string
 		for _, cmd := range strings.Split(a.Command, ";") {
