@@ -14,11 +14,19 @@ installer and no runtime are needed.
 1. Copy `SliceTrigger.exe` to a path **without spaces**, e.g. `C:\Ham\SliceTrigger.exe`, and start it.
    Leave it running while you operate; the function keys talk to the running instance.
 2. Enter the radio IP (or click **Discover**), optionally a SmartSDR **Station** name (needed for multiFLEX), and click **Connect**.
-3. Click **Add** to create actions and check each one with **Test**. The log pane shows `OK` or the error.
+3. Use **Action > Add** to create actions and check each one with **Action > Test**. The bottom line shows `OK` or the error.
+
+The main window is deliberately small so it can stay on screen while you
+operate. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
+**Action** menu and on the right-click menu of the action list; double-click an
+action to edit it. The trigger port is under **Settings**. **Log** opens the
+full log in a separate window you can park on another screen; the line at the
+bottom of the main window shows the latest message. Identical consecutive
+messages are logged once, with a repeat count.
 
 ## N1MM Logger+ setup
 
-1. In SliceTrigger select an action and click **Copy N1MM macro**. The clipboard now holds a line like:
+1. In SliceTrigger select an action and choose **Action > Copy N1MM macro** (or right-click it). The clipboard now holds a line like:
 
    ```
    F1 Ant2,"C:\Ham\SliceTrigger.exe fire 3"
@@ -28,10 +36,10 @@ installer and no runtime are needed.
    or right-click a function key button in the Entry Window).
 3. Paste the line and change `F1` to the key you want. The text before the comma is the button label.
 4. Add the line to both the Run and the S&P section, and to the key file of each mode (CW, SSB, Digital) you use.
-5. Save and press the key. The SliceTrigger log pane shows the action firing.
+5. Save and press the key. The bottom line of SliceTrigger shows the action firing.
 
 Use `fire 3,5` to run several actions from one key. If a key does nothing, run
-`C:\Ham\SliceTrigger.exe fire 3` from a Command Prompt: if the log pane shows the
+`C:\Ham\SliceTrigger.exe fire 3` from a Command Prompt: if SliceTrigger shows the
 action, the bridge is fine and the N1MM line needs adjusting.
 
 ## If the function key opens a second SliceTrigger window
@@ -62,8 +70,8 @@ is fast, and why SliceTrigger must be running while you operate.
 - It only accepts connections from the same PC (127.0.0.1); nothing else on
   your network can reach it.
 - Change it only if another program already uses 8765. SliceTrigger shows
-  "Cannot listen on 127.0.0.1:8765" at startup when that happens. Enter a new
-  port and click **Apply**.
+  "Cannot listen on 127.0.0.1:8765" at startup when that happens. Set a new
+  port under **Settings > Trigger port**.
 - The `fire` command reads the port from the same config file, so your N1MM
   lines do not need editing after a change.
 
@@ -108,7 +116,7 @@ list for that slice (`ant_list`) are skipped.
 ## Config
 
 `slicetrigger.json` next to the exe if that folder is writable, otherwise
-`%APPDATA%\SliceTrigger\slicetrigger.json`. The path is shown in the log pane.
+`%APPDATA%\SliceTrigger\slicetrigger.json`. The path is shown in the log window.
 Relay/HTTP passwords are stored there in plain text.
 
 ## Build

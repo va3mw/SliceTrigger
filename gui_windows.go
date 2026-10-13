@@ -44,9 +44,15 @@ type gui struct {
 	stationEdit *walk.LineEdit
 	connectBtn  *walk.PushButton
 	statusLbl   *walk.Label
-	portEdit    *walk.NumberEdit
 	tv          *walk.TableView
-	logEdit     *walk.TextEdit
+	lastEdit    *walk.LineEdit
+
+	logWin  *walk.MainWindow
+	logEdit *walk.TextEdit
+
+	// Log de-duplication; only touched on the GUI thread.
+	lastMsg string
+	repeats int
 
 	wantConn bool
 }
@@ -61,33 +67,43 @@ func runApp() {
 		g.mw.Synchronize(func() { g.statusLbl.SetText(text) })
 	}
 
+	actionItems := func() []MenuItem {
+		return []MenuItem{
+			Action{Text: "&Add...", OnTriggered: g.onAdd},
+			Action{Text: "&Edit...", OnTriggered: g.onEdit},
+			Action{Text: "D&uplicate", OnTriggered: g.onDuplicate},
+			Action{Text: "&Delete", OnTriggered: g.onDelete},
+			Separator{},
+			Action{Text: "&Test", OnTriggered: g.onTest},
+			Action{Text: "&Copy N1MM macro", OnTriggered: g.onCopyMacro},
+		}
+	}
+
+	// The main window is kept small: it stays on screen while operating.
 	err := MainWindow{
 		AssignTo: &g.mw,
 		Title:    "SliceTrigger",
-		MinSize:  Size{Width: 640, Height: 420},
-		Size:     Size{Width: 860, Height: 560},
-		Layout:   VBox{},
+		MinSize:  Size{Width: 360, Height: 140},
+		Size:     Size{Width: 520, Height: 210},
+		MenuItems: []MenuItem{
+			Menu{Text: "&Action", Items: actionItems()},
+			Menu{Text: "&Settings", Items: []MenuItem{
+				Action{Text: "Trigger &port...", OnTriggered: g.onTriggerPort},
+			}},
+			Action{Text: "&Log", OnTriggered: g.showLog},
+		},
+		Layout: VBox{Margins: Margins{Left: 4, Top: 4, Right: 4, Bottom: 4}, Spacing: 4},
 		Children: []Widget{
 			Composite{
-				Layout: HBox{MarginsZero: true},
+				Layout: HBox{MarginsZero: true, Spacing: 4},
 				Children: []Widget{
-					Label{Text: "Radio IP:"},
-					LineEdit{AssignTo: &g.ipEdit, Text: cfg.RadioIP, MinSize: Size{Width: 110}},
+					LineEdit{AssignTo: &g.ipEdit, Text: cfg.RadioIP, MinSize: Size{Width: 95}, MaxSize: Size{Width: 110},
+						ToolTipText: "Radio IP address"},
 					PushButton{Text: "Discover", OnClicked: g.onDiscover},
-					Label{Text: "Station:"},
-					LineEdit{AssignTo: &g.stationEdit, Text: cfg.Station, MinSize: Size{Width: 100},
+					LineEdit{AssignTo: &g.stationEdit, Text: cfg.Station, MinSize: Size{Width: 70}, MaxSize: Size{Width: 110},
 						ToolTipText: "Optional SmartSDR station name (multiFLEX). Empty = any client."},
 					PushButton{AssignTo: &g.connectBtn, Text: "Connect", OnClicked: g.onConnect},
-					Label{AssignTo: &g.statusLbl, Text: "Not connected", MinSize: Size{Width: 200}},
-					HSpacer{},
-				},
-			},
-			Composite{
-				Layout: HBox{MarginsZero: true},
-				Children: []Widget{
-					Label{Text: "Trigger port:"},
-					NumberEdit{AssignTo: &g.portEdit, Value: float64(cfg.Port), Decimals: 0, MinValue: 1, MaxValue: 65535, MinSize: Size{Width: 70}},
-					PushButton{Text: "Apply", OnClicked: g.onApplyPort},
+					Label{AssignTo: &g.statusLbl, Text: "Not connected"},
 					HSpacer{},
 				},
 			},
@@ -95,33 +111,44 @@ func runApp() {
 				AssignTo:         &g.tv,
 				AlternatingRowBG: true,
 				Columns: []TableViewColumn{
-					{Title: "ID", Width: 45},
-					{Title: "Name", Width: 160},
-					{Title: "Type", Width: 130},
-					{Title: "Summary", Width: 440},
+					{Title: "ID", Width: 32},
+					{Title: "Name", Width: 130},
+					{Title: "Type", Width: 105},
+					{Title: "Summary", Width: 220},
 				},
-				Model:           g.model,
-				OnItemActivated: g.onEdit,
+				Model:            g.model,
+				OnItemActivated:  g.onEdit,
+				ContextMenuItems: actionItems(),
 			},
-			Composite{
-				Layout: HBox{MarginsZero: true},
-				Children: []Widget{
-					PushButton{Text: "Add", OnClicked: g.onAdd},
-					PushButton{Text: "Edit", OnClicked: g.onEdit},
-					PushButton{Text: "Duplicate", OnClicked: g.onDuplicate},
-					PushButton{Text: "Delete", OnClicked: g.onDelete},
-					PushButton{Text: "Test", OnClicked: g.onTest},
-					PushButton{Text: "Copy N1MM macro", OnClicked: g.onCopyMacro},
-					HSpacer{},
-				},
-			},
-			TextEdit{AssignTo: &g.logEdit, ReadOnly: true, VScroll: true, MinSize: Size{Height: 110}},
+			LineEdit{AssignTo: &g.lastEdit, ReadOnly: true, ToolTipText: "Last message. Open Log for the history."},
 		},
 	}.Create()
 	if err != nil {
 		walk.MsgBox(nil, "SliceTrigger", "Cannot create window: "+err.Error(), walk.MsgBoxIconError)
 		os.Exit(1)
 	}
+
+	// The log lives in its own window so it can sit on another screen.
+	err = MainWindow{
+		AssignTo: &g.logWin,
+		Title:    "SliceTrigger Log",
+		Visible:  false,
+		MinSize:  Size{Width: 300, Height: 150},
+		Size:     Size{Width: 720, Height: 320},
+		Layout:   VBox{MarginsZero: true},
+		Children: []Widget{
+			TextEdit{AssignTo: &g.logEdit, ReadOnly: true, VScroll: true},
+		},
+	}.Create()
+	if err != nil {
+		walk.MsgBox(g.mw, "SliceTrigger", "Cannot create log window: "+err.Error(), walk.MsgBoxIconError)
+		os.Exit(1)
+	}
+	// Closing the log window only hides it.
+	g.logWin.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
+		*canceled = true
+		g.logWin.Hide()
+	})
 
 	g.logf("Config: %s", path)
 	if cfgErr != nil {
@@ -141,16 +168,38 @@ func runApp() {
 	g.mw.Run()
 }
 
+func (g *gui) showLog() {
+	g.logWin.Show()
+	g.logWin.BringToTop()
+}
+
+// logf writes to the log window and the one-line display in the main
+// window. A message identical to the previous one is not written again; the
+// number of repeats is noted when the next different message arrives.
 func (g *gui) logf(format string, args ...any) {
-	line := time.Now().Format("15:04:05 ") + fmt.Sprintf(format, args...) + "\r\n"
+	msg := fmt.Sprintf(format, args...)
+	now := time.Now().Format("15:04:05 ")
 	if g.mw == nil {
 		return
 	}
 	g.mw.Synchronize(func() {
+		if g.logEdit == nil {
+			return
+		}
+		if msg == g.lastMsg {
+			g.repeats++
+			g.lastEdit.SetText(fmt.Sprintf("%s%s  (x%d)", now, msg, g.repeats+1))
+			return
+		}
 		if g.logEdit.TextLength() > 200000 {
 			g.logEdit.SetText("")
 		}
-		g.logEdit.AppendText(line)
+		if g.repeats > 0 {
+			g.logEdit.AppendText(fmt.Sprintf("         (repeated %d more times)\r\n", g.repeats))
+		}
+		g.lastMsg, g.repeats = msg, 0
+		g.logEdit.AppendText(now + msg + "\r\n")
+		g.lastEdit.SetText(now + msg)
 	})
 }
 
@@ -179,8 +228,35 @@ func (g *gui) startTrigger(port int) {
 	g.logf("Listening on http://127.0.0.1:%d/fire/<id>", port)
 }
 
-func (g *gui) onApplyPort() {
-	port := int(g.portEdit.Value())
+func (g *gui) onTriggerPort() {
+	var dlg *walk.Dialog
+	var portEdit *walk.NumberEdit
+	var okPB, cancelPB *walk.PushButton
+	cur := g.b.Config().Port
+	err := Dialog{
+		AssignTo:      &dlg,
+		Title:         "Trigger port",
+		DefaultButton: &okPB,
+		CancelButton:  &cancelPB,
+		MinSize:       Size{Width: 300, Height: 120},
+		Layout:        VBox{},
+		Children: []Widget{
+			Label{Text: "Local port the fire command connects to (default 8765):"},
+			NumberEdit{AssignTo: &portEdit, Value: float64(cur), Decimals: 0, MinValue: 1, MaxValue: 65535},
+			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
+				HSpacer{},
+				PushButton{AssignTo: &okPB, Text: "OK", OnClicked: func() { dlg.Accept() }},
+				PushButton{AssignTo: &cancelPB, Text: "Cancel", OnClicked: func() { dlg.Cancel() }},
+			}},
+		},
+	}.Create(g.mw)
+	if err != nil || dlg.Run() != walk.DlgCmdOK {
+		return
+	}
+	port := int(portEdit.Value())
+	if port == cur && g.trigger != nil {
+		return
+	}
 	g.save(func(c *Config) { c.Port = port })
 	g.startTrigger(port)
 }
