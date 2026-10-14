@@ -144,3 +144,25 @@ func ICO(sizes []int) ([]byte, error) {
 	}
 	return out.Bytes(), nil
 }
+
+// Dot draws just a status light (colour c with a white ring) at n x n
+// pixels, for a taskbar overlay badge.
+func Dot(n int, c color.Color) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, n, n))
+	dc := color.NRGBAModel.Convert(c).(color.NRGBA)
+	dc.A = 0xFF
+	ring := color.NRGBA{0xFF, 0xFF, 0xFF, 0xFF}
+	fn := float64(n)
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			d := math.Hypot(float64(x)+0.5-fn/2, float64(y)+0.5-fn/2)
+			if a := clamp01(fn/2 - 0.5 - d); a > 0 {
+				img.SetNRGBA(x, y, blend(img.NRGBAAt(x, y), ring, a))
+			}
+			if a := clamp01(fn*0.38 - d); a > 0 {
+				img.SetNRGBA(x, y, blend(img.NRGBAAt(x, y), dc, a))
+			}
+		}
+	}
+	return img
+}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"image/color"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,7 +52,8 @@ type gui struct {
 	statusLbl   *walk.Label
 	statusBox   *walk.Composite
 	brushes     map[string]*walk.SolidColorBrush
-	icons       map[string]*walk.Icon
+	badge       *taskbarBadge
+	badgeState  string
 	tv          *walk.TableView
 	lastEdit    *walk.LineEdit
 
@@ -191,17 +191,26 @@ func runApp() {
 	if cfgErr != nil {
 		g.logf("Config could not be read, using defaults: %v", cfgErr)
 	}
-	g.icons = map[string]*walk.Icon{}
+	// Plain ST window icon; the connection state goes on a taskbar overlay.
+	if ic, err := walk.NewIconFromImageForDPI(sticon.Draw(64, nil), 192); err == nil {
+		g.mw.SetIcon(ic)
+	}
+	stateColors := map[string]walk.Color{"on": lightOn, "wait": lightWait, "off": lightOff}
 	g.brushes = map[string]*walk.SolidColorBrush{}
-	for name, c := range map[string]walk.Color{"on": lightOn, "wait": lightWait, "off": lightOff} {
+	for name, c := range stateColors {
 		if br, err := walk.NewSolidColorBrush(c); err == nil {
 			g.brushes[name] = br
 		}
-		rgb := color.NRGBA{uint8(c), uint8(c >> 8), uint8(c >> 16), 0xFF} // walk.Color is 0x00BBGGRR
-		if ic, err := walk.NewIconFromImageForDPI(sticon.Draw(64, rgb), 192); err == nil {
-			g.icons[name] = ic
-		}
 	}
+	g.badge = newTaskbarBadge(stateColors, map[string]string{
+		"on": "Connected", "wait": "Connecting", "off": "Not connected"})
+	// The taskbar button may not exist yet: apply the badge again shortly.
+	go func() {
+		for _, d := range []time.Duration{time.Second, 3 * time.Second} {
+			time.Sleep(d)
+			g.mw.Synchronize(func() { g.badge.set(g.mw.Handle(), g.badgeState) })
+		}
+	}()
 	g.showState(false, "Not connected")
 
 	g.startTrigger(cfg.Port)
@@ -275,9 +284,8 @@ func (g *gui) showState(connected bool, text string) {
 		}
 	}
 	g.mw.SetTitle(title)
-	if ic := g.icons[state]; ic != nil {
-		g.mw.SetIcon(ic)
-	}
+	g.badgeState = state
+	g.badge.set(g.mw.Handle(), state)
 }
 
 func (g *gui) onShortcut() {

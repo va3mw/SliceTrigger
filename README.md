@@ -43,8 +43,9 @@ The main window is deliberately small so it can stay on screen while you
 operate. The connection status next to Connect is green when connected (with
 the radio's name and model), amber while connecting or reconnecting, and red
 when disconnected. On Windows 11 the window's title bar takes the same colour;
-older Windows keeps the normal title bar. The window title and taskbar icon
-follow it too, so the state is visible from the taskbar. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
+older Windows keeps the normal title bar. The taskbar button carries a small
+green/amber/red badge (also when SliceTrigger is pinned), and the window title
+shows the radio's name, so the state is visible from the taskbar. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
 **Action** menu and on the right-click menu of the action list; double-click an
 action to edit it. The trigger port is under **Settings**. **Log** opens the
 full log in a separate window you can park on another screen; the line at the
