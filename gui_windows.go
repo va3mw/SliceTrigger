@@ -9,12 +9,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"slicetrigger/internal/sticon"
 
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
+	"github.com/lxn/win"
 )
 
 type actionModel struct {
@@ -49,7 +51,8 @@ type gui struct {
 	stationEdit *walk.LineEdit
 	connectBtn  *walk.PushButton
 	statusLbl   *walk.Label
-	light       *walk.Label
+	statusBox   *walk.Composite
+	brushes     map[string]*walk.SolidColorBrush
 	icons       map[string]*walk.Icon
 	tv          *walk.TableView
 	lastEdit    *walk.LineEdit
@@ -107,6 +110,8 @@ func runApp() {
 			Action{Text: "&Log", OnTriggered: g.showLog},
 			Menu{Text: "&Help", Items: []MenuItem{
 				Action{Text: "Check for &updates...", OnTriggered: func() { g.checkUpdates(true) }},
+				Action{Text: "SliceTrigger on &GitHub", OnTriggered: g.onGitHub},
+				Separator{},
 				Action{Text: "&About SliceTrigger", OnTriggered: g.onAbout},
 			}},
 		},
@@ -121,9 +126,17 @@ func runApp() {
 					LineEdit{AssignTo: &g.stationEdit, Text: cfg.Station, MinSize: Size{Width: 70}, MaxSize: Size{Width: 110},
 						ToolTipText: "SmartSDR station name. Leave empty: multiFLEX is not yet supported."},
 					PushButton{AssignTo: &g.connectBtn, Text: "Connect", OnClicked: g.onConnect},
-					Label{AssignTo: &g.light, Text: "\u25CF", TextColor: lightOff, Font: Font{PointSize: 12},
-						ToolTipText: "Green: connected. Amber: connecting. Grey: not connected."},
-					Label{AssignTo: &g.statusLbl, Text: "Not connected"},
+					// Status "pill": coloured background, white bold text.
+					Composite{
+						AssignTo:   &g.statusBox,
+						Background: SolidColorBrush{Color: lightOff},
+						Layout:     HBox{Margins: Margins{Left: 8, Top: 3, Right: 8, Bottom: 3}},
+						Children: []Widget{
+							Label{AssignTo: &g.statusLbl, Text: "\u25CF  Not connected", TextColor: walk.RGB(0xFF, 0xFF, 0xFF),
+								Background: SolidColorBrush{Color: lightOff}, Font: Font{PointSize: 10, Bold: true},
+								ToolTipText: "Green: connected. Amber: connecting. Red: not connected."},
+						},
+					},
 					HSpacer{},
 				},
 			},
@@ -179,7 +192,11 @@ func runApp() {
 		g.logf("Config could not be read, using defaults: %v", cfgErr)
 	}
 	g.icons = map[string]*walk.Icon{}
+	g.brushes = map[string]*walk.SolidColorBrush{}
 	for name, c := range map[string]walk.Color{"on": lightOn, "wait": lightWait, "off": lightOff} {
+		if br, err := walk.NewSolidColorBrush(c); err == nil {
+			g.brushes[name] = br
+		}
 		rgb := color.NRGBA{uint8(c), uint8(c >> 8), uint8(c >> 16), 0xFF} // walk.Color is 0x00BBGGRR
 		if ic, err := walk.NewIconFromImageForDPI(sticon.Draw(64, rgb), 192); err == nil {
 			g.icons[name] = ic
@@ -228,24 +245,29 @@ func (g *gui) onEscToggle() {
 }
 
 var (
-	lightOn   = walk.RGB(0x1E, 0xB0, 0x3C)
-	lightWait = walk.RGB(0xE0, 0x9A, 0x10)
-	lightOff  = walk.RGB(0x9A, 0x9A, 0x9A)
+	lightOn   = walk.RGB(0x1E, 0x9E, 0x3A)
+	lightWait = walk.RGB(0xD0, 0x86, 0x00)
+	lightOff  = walk.RGB(0xC6, 0x28, 0x28) // red: not connected
 )
 
 // showState updates the status text, the coloured light, the window title
 // and the window/taskbar icon.
 func (g *gui) showState(connected bool, text string) {
-	state, c := "off", lightOff
+	state := "off"
 	switch {
 	case connected:
-		state, c = "on", lightOn
+		state = "on"
 	case g.wantConn:
-		state, c = "wait", lightWait
+		state = "wait"
 	}
-	g.statusLbl.SetText(text)
-	g.light.SetTextColor(c)
-	g.light.Invalidate()
+	g.statusLbl.SetText("\u25CF  " + text)
+	setTitleBarColor(g.mw.Handle(), map[string]walk.Color{"on": lightOn, "wait": lightWait, "off": lightOff}[state])
+	if br := g.brushes[state]; br != nil {
+		g.statusBox.SetBackground(br)
+		g.statusLbl.SetBackground(br)
+	}
+	g.statusBox.Invalidate()
+	g.statusLbl.Invalidate()
 	title := "SliceTrigger"
 	if connected {
 		if name := g.b.Flex.RadioName(); name != "" {
@@ -336,9 +358,19 @@ func (g *gui) restartAs(exe string) {
 	g.mw.Close()
 }
 
+const repoURL = "https://github.com/va3mw/SliceTrigger"
+
+func (g *gui) onGitHub() {
+	win.ShellExecute(g.mw.Handle(), syscall.StringToUTF16Ptr("open"), syscall.StringToUTF16Ptr(repoURL), nil, nil, win.SW_SHOWNORMAL)
+}
+
 func (g *gui) onAbout() {
 	walk.MsgBox(g.mw, "About SliceTrigger",
-		fmt.Sprintf("SliceTrigger %s\n\nN1MM Logger+ function keys for FlexRadio, relays and more.\n\nhttps://github.com/va3mw/SliceTrigger", Version),
+		fmt.Sprintf("SliceTrigger %s\n\n"+
+			"N1MM Logger+ function keys for FlexRadio, relays and more.\n\n"+
+			"Authors: Mike VA3MW and Claude (Anthropic)\n\n"+
+			"%s\n(Help > SliceTrigger on GitHub opens it)\n\n"+
+			"MIT License", Version, repoURL),
 		walk.MsgBoxIconInformation)
 }
 

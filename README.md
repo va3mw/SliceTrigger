@@ -15,8 +15,8 @@ via CAT. One key press can:
 ![SliceTrigger main window and log window](docs/screenshot.png)
 
 *Main window (top) and the separate log window. Screenshot from an earlier
-build; the current one adds a green/amber/grey connection light and shows
-the radio's name next to it.*
+build; the current one shows a green/amber/red connection status with the
+radio's name, and colours the title bar to match on Windows 11.*
 
 ## Download
 
@@ -30,7 +30,7 @@ no installer and no runtime are needed.
 1. Copy `SliceTrigger.exe` to a path **without spaces**, e.g. `C:\Ham\SliceTrigger.exe`, and start it.
    Leave it running while you operate; the function keys talk to the running instance.
 2. Enter the radio IP (or click **Discover**), leave **Station** empty (see [Not yet supported](#not-yet-supported)), and click **Connect**.
-   The light turns green and the radio's name appears when connected. Start SmartSDR first; if actions
+   The status turns green and the radio's name appears when connected. Start SmartSDR first; if actions
    report "no active slice" right after connecting, click Disconnect and Connect again.
 3. Recommended: **Settings > Install .exe in %APPDATA%** copies SliceTrigger and your settings to
    `%APPDATA%\SliceTrigger`, creates a desktop shortcut and restarts from there. Then use
@@ -40,10 +40,11 @@ no installer and no runtime are needed.
 4. Use **Action > Add** to create actions and check each one with **Action > Test**. The bottom line shows `OK` or the error.
 
 The main window is deliberately small so it can stay on screen while you
-operate. The light next to Connect is green when connected (with the radio's
-name and model beside it), amber while connecting or reconnecting, and grey
-when disconnected. The window title and taskbar icon follow it, so the state
-is visible from the taskbar too. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
+operate. The connection status next to Connect is green when connected (with
+the radio's name and model), amber while connecting or reconnecting, and red
+when disconnected. On Windows 11 the window's title bar takes the same colour;
+older Windows keeps the normal title bar. The window title and taskbar icon
+follow it too, so the state is visible from the taskbar. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
 **Action** menu and on the right-click menu of the action list; double-click an
 action to edit it. The trigger port is under **Settings**. **Log** opens the
 full log in a separate window you can park on another screen; the line at the
@@ -232,13 +233,13 @@ On non-Windows systems `go build` produces a headless build (no GUI) for develop
 
 ## Status
 
-Early, but in use. Confirmed on a FLEX-8600 with N1MM Logger+: function keys
+Early, but in use. Tested on a FLEX-8600 with N1MM Logger+: function keys
 firing actions through the `fire` command, RX antenna changes on the active
-slice, and voice keyer playback.
+slice including the ANT1/ANT2 return cycle, and the voice keyer (DVK)
+including ESC to stop playback.
 
-Not yet confirmed on real hardware: the ANT1/ANT2 return cycle, ESC stopping
-the voice keyer, the connection light, discovery, and KMtronic relays. The core
-is covered by unit tests against a mock radio.
+Not yet confirmed on real hardware: the connection light, discovery, and
+KMtronic relays. The core is covered by unit tests against a mock radio.
 
 ### Not yet supported
 
@@ -268,6 +269,10 @@ open-source Flex clients, not from FlexRadio documentation:
   (AetherSDR's form, without an id; StationA adds `id=N`); `dvk preview_stop` for preview;
   status lines `dvk status=idle|recording|preview|playback|disabled [id=N] enabled=0|1`.
 - Firmware that does not report `index_letter` falls back to A=0, B=1, ...
+
+## Authors
+
+Mike VA3MW and Claude (Anthropic).
 
 ## License
 
