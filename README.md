@@ -20,8 +20,10 @@ the radio's name next to it.*
 
 ## Download
 
-`SliceTrigger.exe` in this repository is a ready-to-run Windows x64 build. No
-installer and no runtime are needed.
+Download `SliceTrigger.exe` from the
+[latest release](https://github.com/va3mw/SliceTrigger/releases/latest) (the
+same file is also in this repository). It is a ready-to-run Windows x64 build;
+no installer and no runtime are needed.
 
 ## Quick start
 
@@ -255,3 +257,7 @@ open-source Flex clients, not from FlexRadio documentation:
   (AetherSDR's form, without an id; StationA adds `id=N`); `dvk preview_stop` for preview;
   status lines `dvk status=idle|recording|preview|playback|disabled [id=N] enabled=0|1`.
 - Firmware that does not report `index_letter` falls back to A=0, B=1, ...
+
+## License
+
+MIT, see [LICENSE](LICENSE).
