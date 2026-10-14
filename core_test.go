@@ -18,6 +18,8 @@ import (
 type mockRadio struct {
 	ln net.Listener
 
+	noDVK bool // behave like a radio without the voice keyer
+
 	mu    sync.Mutex
 	cmds  []string
 	conns []net.Conn
@@ -74,6 +76,19 @@ func (m *mockRadio) serve(c net.Conn) {
 			for _, s := range mockStatus {
 				fmt.Fprintf(c, "S%s|%s\n", mockHandle, s)
 			}
+		case cmd == "sub dvk all" && m.noDVK:
+			fmt.Fprintf(c, "R%s|50000015|unknown command\n", seq)
+		case cmd == "sub dvk all":
+			fmt.Fprintf(c, "R%s|0|\n", seq)
+			fmt.Fprintf(c, "S%s|dvk added id=1 name=\"CQ contest\" duration=2720\n", mockHandle)
+			fmt.Fprintf(c, "S%s|dvk status=idle enabled=1\n", mockHandle)
+		case strings.HasPrefix(cmd, "dvk playback_start id="):
+			// Like the radio: status before the reply.
+			fmt.Fprintf(c, "S%s|dvk status=playback id=%s enabled=1\n", mockHandle, strings.TrimPrefix(cmd, "dvk playback_start id="))
+			fmt.Fprintf(c, "R%s|0|\n", seq)
+		case cmd == "dvk playback_stop" || cmd == "dvk preview_stop":
+			fmt.Fprintf(c, "S%s|dvk status=idle enabled=1\n", mockHandle)
+			fmt.Fprintf(c, "R%s|0|\n", seq)
 		case strings.HasPrefix(cmd, "bad"):
 			fmt.Fprintf(c, "R%s|50000015|unknown command\n", seq)
 		default:
@@ -371,6 +386,97 @@ func TestFireRequest(t *testing.T) {
 		if spec != c.spec || port != c.port || ok != c.ok {
 			t.Errorf("fireRequest(%q, %q) = %q, %d, %v", c.exe, c.args, spec, port, ok)
 		}
+	}
+}
+
+func (m *mockRadio) count(cmd string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, c := range m.cmds {
+		if c == cmd {
+			n++
+		}
+	}
+	return n
+}
+
+func TestVoiceKeyer(t *testing.T) {
+	m := newMockRadio(t)
+	cfg := &Config{Actions: []Act{
+		{ID: 1, Name: "CQ", Type: TypeFlexDVK, DVKOp: DVKPlay, Memory: 3},
+		{ID: 2, Name: "Stop", Type: TypeFlexDVK, DVKOp: DVKStop},
+		{ID: 3, Name: "Bad", Type: TypeFlexDVK, DVKOp: DVKPlay, Memory: 13},
+	}}
+	b := NewBridge(cfg, "")
+	connectFlex(t, b.Flex, m)
+	waitFor(t, "dvk status", func() bool { return b.Flex.DVK().Known })
+
+	// ESC while idle sends nothing.
+	if msg, err := b.StopDVK(true); msg != "" || err != nil {
+		t.Errorf("ESC while idle: %q, %v", msg, err)
+	}
+
+	if res := b.Fire("CQ"); !res[0].OK || !m.saw("dvk playback_start id=3") {
+		t.Fatalf("play: %v", res)
+	}
+	if st := b.Flex.DVK(); st.Status != "playback" || st.ID != 3 {
+		t.Errorf("state after play: %+v", st)
+	}
+
+	// ESC while playing stops it.
+	if msg, err := b.StopDVK(true); msg != "dvk playback_stop" || err != nil {
+		t.Errorf("ESC while playing: %q, %v", msg, err)
+	}
+	waitFor(t, "idle", func() bool { return b.Flex.DVK().Status == "idle" })
+
+	// Stop action while idle: no command, reported OK.
+	if res := b.Fire("2"); !res[0].OK || m.count("dvk playback_stop") != 1 {
+		t.Errorf("stop while idle: %v, stops=%d", res, m.count("dvk playback_stop"))
+	}
+
+	// Preview (local listen) is stopped with preview_stop; recording is left alone.
+	b.Flex.handleStatus("dvk status=preview id=5 enabled=1")
+	if msg, _ := b.StopDVK(true); msg != "dvk preview_stop" {
+		t.Errorf("ESC during preview: %q", msg)
+	}
+	b.Flex.handleStatus("dvk status=recording id=5 enabled=1")
+	if msg, _ := b.StopDVK(true); msg != "" {
+		t.Errorf("ESC during recording: %q", msg)
+	}
+
+	if res := b.Fire("3"); res[0].OK {
+		t.Error("memory 13 accepted")
+	}
+	b.Flex.handleStatus("dvk status=disabled enabled=0")
+	if res := b.Fire("1"); res[0].OK || !strings.Contains(res[0].Msg, "disabled") {
+		t.Errorf("play while disabled: %v", res)
+	}
+}
+
+func TestVoiceKeyerWithoutStatus(t *testing.T) {
+	// A radio that rejects "sub dvk all": ESC only stops what we started.
+	m := newMockRadio(t)
+	m.noDVK = true
+	b := NewBridge(&Config{}, "")
+	connectFlex(t, b.Flex, m)
+
+	if msg, _ := b.StopDVK(true); msg != "" {
+		t.Errorf("ESC before any play: %q", msg)
+	}
+	if _, err := b.PlayDVK(2); err != nil {
+		t.Fatal(err)
+	}
+	// The mock still sends a playback status line after the start; drop it to
+	// simulate a radio that reports nothing.
+	b.Flex.mu.Lock()
+	b.Flex.dvk = DVKState{}
+	b.Flex.mu.Unlock()
+	if msg, err := b.StopDVK(true); msg != "dvk playback_stop" || err != nil {
+		t.Errorf("ESC after our play: %q, %v", msg, err)
+	}
+	if msg, _ := b.StopDVK(true); msg != "" {
+		t.Errorf("second ESC: %q", msg)
 	}
 }
 

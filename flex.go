@@ -35,7 +35,16 @@ type Flex struct {
 	pending map[int]chan FlexReply
 	slices  map[int]map[string]string
 	clients map[uint32]map[string]string
+	dvk     DVKState
 	stop    chan struct{}
+}
+
+// DVKState is the radio's voice keyer state from "dvk status=..." lines.
+type DVKState struct {
+	Known   bool   // a dvk status line has been received on this connection
+	Status  string // idle|recording|preview|playback|disabled
+	ID      int    // active memory, 0 if none
+	Enabled bool
 }
 
 type FlexReply struct {
@@ -152,6 +161,7 @@ func (f *Flex) session(conn net.Conn, stop chan struct{}) error {
 		}
 		f.slices = map[int]map[string]string{}
 		f.clients = map[uint32]map[string]string{}
+		f.dvk = DVKState{}
 		f.mu.Unlock()
 	}()
 
@@ -190,7 +200,8 @@ func (f *Flex) session(conn net.Conn, stop chan struct{}) error {
 }
 
 func (f *Flex) afterHandshake(conn net.Conn, done chan struct{}) {
-	for _, cmd := range []string{"sub client all", "sub slice all"} {
+	// "sub dvk all" fails on radios without the voice keyer; that is only logged.
+	for _, cmd := range []string{"sub client all", "sub slice all", "sub dvk all"} {
 		if _, err := f.Command(cmd, 5*time.Second); err != nil {
 			f.logf("Flex: %q failed: %v", cmd, err)
 		}
@@ -262,6 +273,19 @@ func (f *Flex) handleStatus(body string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	switch fields[0] {
+	case "dvk":
+		// "dvk status=playback id=3 enabled=1". Memory library lines
+		// ("dvk added id=1 name=...") carry no status= and are ignored.
+		kv := map[string]string{}
+		mergeKV(kv, fields[1:])
+		st, ok := kv["status"]
+		if !ok {
+			return
+		}
+		f.dvk = DVKState{Known: true, Status: strings.ToLower(st), Enabled: kv["enabled"] != "0"}
+		if id, err := strconv.Atoi(kv["id"]); err == nil && f.dvk.Enabled && f.dvk.Status != "idle" && f.dvk.Status != "disabled" {
+			f.dvk.ID = id
+		}
 	case "slice":
 		idx, err := strconv.Atoi(fields[1])
 		if err != nil {
@@ -330,6 +354,12 @@ func (f *Flex) Command(cmd string, timeout time.Duration) (FlexReply, error) {
 		f.mu.Unlock()
 		return FlexReply{}, errFlexTimeout
 	}
+}
+
+func (f *Flex) DVK() DVKState {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.dvk
 }
 
 // SliceValue returns one tracked status value of a slice ("" if unknown).

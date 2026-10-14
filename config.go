@@ -15,6 +15,7 @@ type Config struct {
 	Station     string `json:"station"`
 	AutoConnect bool   `json:"auto_connect"`
 	Port        int    `json:"port"`
+	EscStopsDVK bool   `json:"esc_stops_dvk"`
 	Actions     []Act  `json:"actions"`
 }
 
@@ -45,7 +46,7 @@ func configPath() string {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	c := &Config{Port: 8765}
+	c := &Config{Port: 8765, EscStopsDVK: true}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return c, nil
@@ -54,7 +55,7 @@ func LoadConfig(path string) (*Config, error) {
 		return c, err
 	}
 	if err := json.Unmarshal(data, c); err != nil {
-		return &Config{Port: 8765}, err
+		return &Config{Port: 8765, EscStopsDVK: true}, err
 	}
 	if c.Port <= 0 || c.Port > 65535 {
 		c.Port = 8765

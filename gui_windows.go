@@ -47,6 +47,8 @@ type gui struct {
 	tv          *walk.TableView
 	lastEdit    *walk.LineEdit
 
+	escAction *walk.Action
+
 	logWin  *walk.MainWindow
 	logEdit *walk.TextEdit
 
@@ -89,6 +91,8 @@ func runApp() {
 			Menu{Text: "&Action", Items: actionItems()},
 			Menu{Text: "&Settings", Items: []MenuItem{
 				Action{Text: "Trigger &port...", OnTriggered: g.onTriggerPort},
+				Action{AssignTo: &g.escAction, Text: "&ESC stops voice keyer playback",
+					Checkable: true, Checked: cfg.EscStopsDVK, OnTriggered: g.onEscToggle},
 			}},
 			Action{Text: "&Log", OnTriggered: g.showLog},
 		},
@@ -155,10 +159,12 @@ func runApp() {
 		g.logf("Config could not be read, using defaults: %v", cfgErr)
 	}
 	g.startTrigger(cfg.Port)
+	g.applyEscHook(cfg.EscStopsDVK)
 	if cfg.AutoConnect && cfg.RadioIP != "" {
 		g.connect()
 	}
 	g.mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
+		removeEscHook()
 		g.b.Flex.OnState = nil
 		g.b.Flex.Disconnect()
 		if g.trigger != nil {
@@ -166,6 +172,29 @@ func runApp() {
 		}
 	})
 	g.mw.Run()
+}
+
+func (g *gui) applyEscHook(on bool) {
+	if !on {
+		removeEscHook()
+		return
+	}
+	err := installEscHook(func() {
+		if msg, err := g.b.StopDVK(true); err != nil {
+			g.logf("ESC: %s %v", msg, err)
+		} else if msg != "" {
+			g.logf("ESC: %s", msg)
+		}
+	})
+	if err != nil {
+		g.logf("ESC key hook could not be installed: %v", err)
+	}
+}
+
+func (g *gui) onEscToggle() {
+	on := g.escAction.Checked()
+	g.save(func(c *Config) { c.EscStopsDVK = on })
+	g.applyEscHook(on)
 }
 
 func (g *gui) showLog() {
@@ -436,8 +465,15 @@ func (g *gui) onTest() {
 	if !ok {
 		return
 	}
-	id := g.model.items[i].ID
-	go g.b.Fire(strconv.Itoa(id))
+	a := g.model.items[i]
+	if a.Type == TypeFlexDVK && a.DVKOp != DVKStop {
+		if walk.MsgBox(g.mw, "Test voice keyer",
+			fmt.Sprintf("Playing memory %d keys the transmitter.\n\nTransmit now?", a.Memory),
+			walk.MsgBoxYesNo|walk.MsgBoxIconWarning|walk.MsgBoxDefButton2) != walk.DlgCmdYes {
+			return
+		}
+	}
+	go g.b.Fire(strconv.Itoa(a.ID))
 }
 
 func (g *gui) onCopyMacro() {
@@ -478,6 +514,8 @@ func indexOf(list []string, s string, def int) int {
 var (
 	sliceChoices = []string{"Active", "A", "B", "C", "D", "E", "F", "G", "H"}
 	antChoices   = []string{"ANT1", "ANT2", "RX_A", "RX_B", "XVTA", "XVTB"}
+	dvkOps       = []string{DVKPlay, DVKStop}
+	dvkOpLabels  = []string{"Play memory", "Stop playback"}
 	kmModeLabels = []string{"Relay ON", "Relay OFF", "Only this relay ON (others off)", "Bit pattern (hex)", "All OFF"}
 )
 
@@ -495,7 +533,9 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 		replyCB, rrCB                            *walk.CheckBox
 		antChecks                                = make([]*walk.CheckBox, len(antChoices))
 		grpSlice, grpAnt, grpCmd, grpKM, grpURL  *walk.Composite
-		grpAuth, grpTCP                          *walk.Composite
+		grpAuth, grpTCP, grpDVK                  *walk.Composite
+		dvkOpCB                                  *walk.ComboBox
+		memEdit                                  *walk.NumberEdit
 	)
 	typeNames := make([]string, len(actionTypes))
 	for i, t := range actionTypes {
@@ -528,6 +568,8 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 		grpURL.SetVisible(t == TypeHTTP)
 		grpAuth.SetVisible(t == TypeKMtronic || t == TypeHTTP)
 		grpTCP.SetVisible(t == TypeTCP)
+		grpDVK.SetVisible(t == TypeFlexDVK)
+		memEdit.SetEnabled(dvkOpCB.CurrentIndex() == 0)
 	}
 
 	collect := func() (Act, error) {
@@ -580,6 +622,11 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 			n.User, n.Pass = userEdit.Text(), passEdit.Text()
 			if !strings.HasPrefix(n.URL, "http://") && !strings.HasPrefix(n.URL, "https://") {
 				return n, fmt.Errorf("The URL must start with http:// or https://.")
+			}
+		case TypeFlexDVK:
+			n.DVKOp = dvkOps[dvkOpCB.CurrentIndex()]
+			if n.DVKOp == DVKPlay {
+				n.Memory = int(memEdit.Value())
 			}
 		case TypeTCP:
 			n.Addr = strings.TrimSpace(addrEdit.Text())
@@ -641,6 +688,19 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 					ToolTipText: "Separate several commands with ';'. {slice} is replaced by the slice index."},
 				Label{Text: ""},
 				Label{Text: "Example: slice set {slice} nb=1; slice set {slice} nr=0"},
+			}},
+			Composite{AssignTo: &grpDVK, Layout: grid, Children: []Widget{
+				Label{Text: "Operation:"},
+				ComboBox{AssignTo: &dvkOpCB, Model: dvkOpLabels, CurrentIndex: indexOf(dvkOps, a.DVKOp, 0),
+					OnCurrentIndexChanged: func() {
+						if memEdit != nil {
+							memEdit.SetEnabled(dvkOpCB.CurrentIndex() == 0)
+						}
+					}},
+				Label{Text: "Memory (1-12):"},
+				NumberEdit{AssignTo: &memEdit, Value: float64(max(a.Memory, 1)), Decimals: 0, MinValue: 1, MaxValue: DVKSlots},
+				Label{Text: ""},
+				Label{Text: "Playing a memory keys the transmitter."},
 			}},
 			Composite{AssignTo: &grpKM, Layout: grid, Children: []Widget{
 				Label{Text: "Relay board IP:"},

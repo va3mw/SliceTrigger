@@ -19,9 +19,17 @@ const (
 	TypeKMtronic  = "kmtronic"
 	TypeHTTP      = "http_get"
 	TypeTCP       = "tcp_send"
+	TypeFlexDVK   = "flex_dvk"
 )
 
-var actionTypes = []string{TypeFlexRxAnt, TypeFlexRaw, TypeKMtronic, TypeHTTP, TypeTCP}
+// DVK operations and memory range. The radio has 12 voice keyer memories.
+const (
+	DVKPlay  = "play"
+	DVKStop  = "stop"
+	DVKSlots = 12
+)
+
+var actionTypes = []string{TypeFlexRxAnt, TypeFlexRaw, TypeFlexDVK, TypeKMtronic, TypeHTTP, TypeTCP}
 
 var typeLabels = map[string]string{
 	TypeFlexRxAnt: "Flex RX antenna",
@@ -29,6 +37,7 @@ var typeLabels = map[string]string{
 	TypeKMtronic:  "KMtronic relay",
 	TypeHTTP:      "HTTP GET",
 	TypeTCP:       "TCP send",
+	TypeFlexDVK:   "Flex voice keyer",
 }
 
 // KMtronic modes.
@@ -52,6 +61,8 @@ type Act struct {
 	Antenna string `json:"antenna,omitempty"` // flex_rxant
 	Cycle   string `json:"cycle,omitempty"`   // flex_rxant round robin: "ANT1,ANT2,RX_A"
 	Command string `json:"command,omitempty"` // flex_raw, ';' separated
+	DVKOp   string `json:"dvk_op,omitempty"`  // flex_dvk: play|stop
+	Memory  int    `json:"memory,omitempty"`  // flex_dvk: 1..12
 
 	// KMtronic
 	Host    string `json:"host,omitempty"`
@@ -80,6 +91,11 @@ func (a Act) Summary() string {
 		return fmt.Sprintf("slice %s rxant=%s", orDefault(a.Slice, "Active"), a.Antenna)
 	case TypeFlexRaw:
 		return a.Command
+	case TypeFlexDVK:
+		if a.DVKOp == DVKStop {
+			return "voice keyer stop"
+		}
+		return fmt.Sprintf("voice keyer play memory %d (transmits)", a.Memory)
 	case TypeKMtronic:
 		u, err := kmtronicURL(a)
 		if err != nil {
@@ -279,6 +295,9 @@ type Bridge struct {
 
 	antMu sync.Mutex // serializes RX antenna changes so rapid presses step one at a time
 
+	dvkMu     sync.Mutex
+	dvkLastID int // memory we last started, used if the radio sends no dvk status
+
 	mu   sync.Mutex
 	cfg  *Config
 	path string
@@ -409,6 +428,11 @@ func (b *Bridge) Run(a Act) (string, error) {
 			return "", errors.New("command is empty")
 		}
 		return strings.Join(sent, "; "), nil
+	case TypeFlexDVK:
+		if a.DVKOp == DVKStop {
+			return b.StopDVK(false)
+		}
+		return b.PlayDVK(a.Memory)
 	case TypeKMtronic:
 		u, err := kmtronicURL(a)
 		if err != nil {
@@ -424,6 +448,48 @@ func (b *Bridge) Run(a Act) (string, error) {
 		return tcpSend(a)
 	}
 	return "", fmt.Errorf("unknown action type %q", a.Type)
+}
+
+// PlayDVK starts voice keyer memory id; the radio keys the transmitter.
+func (b *Bridge) PlayDVK(id int) (string, error) {
+	if id < 1 || id > DVKSlots {
+		return "", fmt.Errorf("voice keyer memory %d out of range 1..%d", id, DVKSlots)
+	}
+	if st := b.Flex.DVK(); st.Known && (!st.Enabled || st.Status == "disabled") {
+		return "", errors.New("voice keyer is disabled on the radio")
+	}
+	cmd := fmt.Sprintf("dvk playback_start id=%d", id)
+	if _, err := b.Flex.Command(cmd, flexTimeout); err != nil {
+		return cmd, err
+	}
+	b.dvkMu.Lock()
+	b.dvkLastID = id
+	b.dvkMu.Unlock()
+	return cmd, nil
+}
+
+// StopDVK stops voice keyer playback or preview. With onlyIfActive it does
+// nothing unless the radio reports playback/preview (or, on a radio that sends
+// no dvk status, we started a memory ourselves). Recording is never stopped.
+func (b *Bridge) StopDVK(onlyIfActive bool) (string, error) {
+	st := b.Flex.DVK()
+	b.dvkMu.Lock()
+	startedByUs := b.dvkLastID != 0
+	b.dvkLastID = 0
+	b.dvkMu.Unlock()
+
+	cmd := "dvk playback_stop"
+	switch {
+	case st.Known && st.Status == "preview":
+		cmd = "dvk preview_stop"
+	case st.Known && st.Status == "playback":
+	case onlyIfActive && (st.Known || !startedByUs):
+		return "", nil
+	case st.Known:
+		return "voice keyer not playing", nil
+	}
+	_, err := b.Flex.Command(cmd, flexTimeout)
+	return cmd, err
 }
 
 func (b *Bridge) httpGet(u, user, pass string) (string, error) {

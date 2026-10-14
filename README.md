@@ -96,6 +96,7 @@ The reply is 200 if everything succeeded, 404 for an unknown action, 500 if an a
 |---|---|
 | Flex RX antenna | `slice set <index> rxant=<ant>`; slice A..H or Active. Fixed antenna, or round robin through the antennas you tick |
 | Flex raw command | one or more API commands separated by `;`, `{slice}` = resolved slice index; stops at the first error |
+| Flex voice keyer | play voice keyer (DVK) memory 1–12 (`dvk playback_start id=N`, **keys the transmitter**), or stop playback |
 | KMtronic relay | `http://<ip>/FF0101` on, `FF0100` off, `FFE0xx` pattern (bit 0 = relay 1), `FFE000` all off |
 | HTTP GET | any URL, optional basic auth |
 | TCP send | bytes to `host:port`, escapes `\r \n \t \0 \\ \xHH`, optional reply read |
@@ -112,6 +113,24 @@ wrapping at the end. Because it starts from what the radio reports, it stays in
 step if you change the antenna in SmartSDR; if the current antenna is not one
 of the ticked ones, the press selects the first. Antennas the radio does not
 list for that slice (`ant_list`) are skipped.
+
+## Voice keyer (DVK)
+
+A **Flex voice keyer** action plays one of the radio's 12 DVK memories, the
+same ones as the SmartSDR DVK panel. Playback keys the transmitter. Record and
+name the memories in SmartSDR; SliceTrigger only plays and stops them. The
+radio's voice keyer needs SmartSDR v4 or later (and, per AetherSDR, the
+SmartSDR+ entitlement); a radio without it rejects the command and the error
+appears in the log. **Action > Test** on a play action asks before transmitting.
+
+**ESC stops playback.** With **Settings > ESC stops voice keyer playback**
+ticked (the default), pressing ESC in any program, N1MM included, stops a
+playing memory. N1MM still receives the ESC, so it also stops its own keying as
+usual. ESC does nothing while the voice keyer is idle, and never interrupts a
+recording. If the radio reports no voice keyer status, ESC only stops a memory
+SliceTrigger itself started.
+
+A "Stop playback" action does the same from a function key.
 
 ## Config
 
@@ -159,4 +178,10 @@ tested against the mock radio, not real hardware:
 - Slices are matched to a station by comparing the slice's `client_handle` with the handle in `client 0x<handle> connected ... station=<name>`.
 - A `ping` command is sent every 10 s as keepalive; only a *missing* reply (5 s) drops the connection, an error reply does not.
 - Slice status carries the current RX antenna as `rxant=` and the selectable ones as a comma separated `ant_list=`.
+- Voice keyer, taken from two open-source Flex clients rather than FlexRadio documentation
+  ([AetherSDR](https://github.com/aethersdr/AetherSDR) `src/models/DvkModel.cpp`,
+  [kgbvax/StationA](https://github.com/kgbvax/StationA) `flexbridge/internal/flexradio/client.go`):
+  12 memories; `sub dvk all`; play `dvk playback_start id=N`; stop `dvk playback_stop`
+  (AetherSDR's form, without an id; StationA adds `id=N`); `dvk preview_stop` for preview;
+  status lines `dvk status=idle|recording|preview|playback|disabled [id=N] enabled=0|1`.
 - Firmware that does not report `index_letter` falls back to A=0, B=1, ...
