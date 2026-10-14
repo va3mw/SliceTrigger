@@ -94,7 +94,7 @@ The reply is 200 if everything succeeded, 404 for an unknown action, 500 if an a
 
 | Type | What is sent |
 |---|---|
-| Flex RX antenna | `slice set <index> rxant=<ant>`; slice A..H or Active. Fixed antenna, or round robin through the antennas you tick |
+| Flex RX antenna | `slice set <index> rxant=<ant>`; slice A..H or Active. Fixed antenna, or a cycle out to the antennas you tick and back to ANT1/ANT2 |
 | Flex raw command | one or more API commands separated by `;`, `{slice}` = resolved slice index; stops at the first error |
 | Flex voice keyer | play voice keyer (DVK) memory 1–12 (`dvk playback_start id=N`, **keys the transmitter**), or stop playback |
 | KMtronic relay | `http://<ip>/FF0101` on, `FF0100` off, `FFE0xx` pattern (bit 0 = relay 1), `FFE000` all off |
@@ -107,12 +107,22 @@ SmartSDR client are considered. Without one, "Active" fails if more than one
 client has an active slice (multiFLEX), and a letter picks the lowest-numbered
 match, so set the Station when running multiFLEX.
 
-Round robin: tick "Round robin" and at least two antennas in the action. Each
-press reads the slice's current RX antenna and selects the next ticked one,
-wrapping at the end. Because it starts from what the radio reports, it stays in
-step if you change the antenna in SmartSDR; if the current antenna is not one
-of the ticked ones, the press selects the first. Antennas the radio does not
-list for that slice (`ant_list`) are skipped.
+RX antenna cycle (the default for a new RX antenna action): tick "Cycle" and
+the antennas to switch to, e.g. RX_A and RX_B. The slice's main antenna, ANT1
+or ANT2, is home. Each press moves to the next ticked antenna, and the press
+after the last one returns home:
+
+    ANT1 > RX_A > RX_B > ANT1 > ...
+
+- Home is whichever of ANT1/ANT2 the slice is on when the cycle starts. If you
+  change the slice to ANT1 or ANT2 in SmartSDR, that becomes the new home.
+- If the slice is on a receive-only antenna and SliceTrigger has no home yet,
+  it uses the slice's TX antenna (if ANT1/ANT2), otherwise ANT1.
+- Any antenna can be ticked, including XVTA/XVTB and the other main antenna
+  (ticking ANT2 with home ANT1 gives ANT1 > ANT2 > ... > ANT1).
+- From an antenna that is not part of the cycle, a press returns home.
+- Antennas the radio does not list for that slice (`ant_list`) are skipped.
+- Only the receive antenna changes; the TX antenna is never touched.
 
 ## Voice keyer (DVK)
 
@@ -177,7 +187,7 @@ tested against the mock radio, not real hardware:
 - A slice is dropped from the table on `in_use=0`, a client on `client <handle> disconnected`.
 - Slices are matched to a station by comparing the slice's `client_handle` with the handle in `client 0x<handle> connected ... station=<name>`.
 - A `ping` command is sent every 10 s as keepalive; only a *missing* reply (5 s) drops the connection, an error reply does not.
-- Slice status carries the current RX antenna as `rxant=` and the selectable ones as a comma separated `ant_list=`.
+- Slice status carries the current RX antenna as `rxant=`, the TX antenna as `txant=`, and the selectable ones as a comma separated `ant_list=`.
 - Voice keyer, taken from two open-source Flex clients rather than FlexRadio documentation
   ([AetherSDR](https://github.com/aethersdr/AetherSDR) `src/models/DvkModel.cpp`,
   [kgbvax/StationA](https://github.com/kgbvax/StationA) `flexbridge/internal/flexradio/client.go`):

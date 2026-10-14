@@ -413,7 +413,7 @@ func (g *gui) usedIDs(except int) map[int]bool {
 
 func (g *gui) onAdd() {
 	a := Act{
-		ID: g.nextID(), Type: TypeFlexRxAnt, Slice: "Active", Antenna: "ANT1",
+		ID: g.nextID(), Type: TypeFlexRxAnt, Slice: "Active", Antenna: "ANT1", Cycle: "RX_A,RX_B",
 		Host: "192.168.1.199", Mode: KMOn, Relay: 1, User: "admin", Pass: "admin",
 		TimeoutMs: 2000,
 	}
@@ -595,8 +595,8 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 						picked = append(picked, antChoices[i])
 					}
 				}
-				if len(picked) < 2 {
-					return n, fmt.Errorf("Round robin needs at least two antennas checked.")
+				if len(picked) < 1 {
+					return n, fmt.Errorf("Check at least one antenna to switch to.")
 				}
 				n.Cycle = strings.Join(picked, ",")
 			} else if n.Antenna == "" {
@@ -673,7 +673,7 @@ func editAction(owner walk.Form, a Act, usedIDs map[int]bool, title string) (Act
 				Label{Text: "RX antenna:"},
 				ComboBox{AssignTo: &antCB, Model: antChoices, Editable: true},
 				Label{Text: ""},
-				CheckBox{AssignTo: &rrCB, Text: "Round robin: each press selects the next checked antenna",
+				CheckBox{AssignTo: &rrCB, Text: "Cycle: each press moves to the next checked antenna, then back to the ANT1/ANT2 it started on",
 					Checked: len(inCycle) > 0, OnCheckedChanged: func() {
 						if antChecks[len(antChecks)-1] != nil {
 							updateCycle()

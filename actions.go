@@ -86,7 +86,7 @@ func (a Act) Summary() string {
 	switch a.Type {
 	case TypeFlexRxAnt:
 		if list := splitList(a.Cycle); len(list) > 0 {
-			return fmt.Sprintf("slice %s rxant round robin: %s", orDefault(a.Slice, "Active"), strings.Join(list, " > "))
+			return fmt.Sprintf("slice %s rxant: ANT1/2 > %s > back", orDefault(a.Slice, "Active"), strings.Join(list, " > "))
 		}
 		return fmt.Sprintf("slice %s rxant=%s", orDefault(a.Slice, "Active"), a.Antenna)
 	case TypeFlexRaw:
@@ -128,30 +128,58 @@ func splitList(s string) []string {
 	return out
 }
 
-// nextAntenna picks the entry after cur in list, wrapping around. If cur is
-// not in the list the first entry is used. Entries the radio does not offer
-// for this slice (avail, from ant_list) are skipped when avail is known.
-func nextAntenna(list []string, cur string, avail []string) string {
-	if len(avail) > 0 {
-		var usable []string
-		for _, a := range list {
+// isMainAnt reports whether ant is one of the radio's main ports, which the
+// RX antenna cycle starts from and returns to.
+func isMainAnt(ant string) bool {
+	return strings.EqualFold(ant, "ANT1") || strings.EqualFold(ant, "ANT2")
+}
+
+// nextRxAnt steps the RX antenna cycle home -> options... -> home. home is
+// the ANT1/ANT2 the cycle started from; options are the ticked antennas other
+// than home, in order. From an antenna that is neither home nor an option the
+// press returns home. Options the radio does not offer for this slice (avail,
+// from ant_list) are skipped when avail is known.
+func nextRxAnt(ticked []string, cur, home string, avail []string) string {
+	var opts []string
+	for _, a := range ticked {
+		if strings.EqualFold(a, home) {
+			continue
+		}
+		if len(avail) > 0 {
+			offered := false
 			for _, v := range avail {
 				if strings.EqualFold(a, v) {
-					usable = append(usable, a)
+					offered = true
 					break
 				}
 			}
+			if !offered {
+				continue
+			}
 		}
-		if len(usable) > 0 {
-			list = usable
-		}
+		opts = append(opts, a)
 	}
-	for i, a := range list {
+	if len(opts) == 0 {
+		return home
+	}
+	if strings.EqualFold(cur, home) {
+		return opts[0]
+	}
+	for i, a := range opts {
 		if strings.EqualFold(a, cur) {
-			return list[(i+1)%len(list)]
+			if i+1 < len(opts) {
+				return opts[i+1]
+			}
+			return home
 		}
 	}
-	return list[0]
+	return home
+}
+
+// antCycle is the per-slice RX antenna cycle state.
+type antCycle struct {
+	home    string // ANT1/ANT2 to return to
+	lastSet string // antenna we last selected
 }
 
 // kmtronicURL builds the relay URL for a KMtronic WEB board.
@@ -293,7 +321,8 @@ type Bridge struct {
 	Flex *Flex
 	Logf func(format string, args ...any)
 
-	antMu sync.Mutex // serializes RX antenna changes so rapid presses step one at a time
+	antMu    sync.Mutex // serializes RX antenna changes so rapid presses step one at a time
+	antCycle map[int]*antCycle
 
 	dvkMu     sync.Mutex
 	dvkLastID int // memory we last started, used if the radio sends no dvk status
@@ -393,8 +422,29 @@ func (b *Bridge) Run(a Act) (string, error) {
 			return "", err
 		}
 		ant := strings.TrimSpace(a.Antenna)
+		var cyc *antCycle
 		if list := splitList(a.Cycle); len(list) > 0 {
-			ant = nextAntenna(list, b.Flex.SliceValue(idx, "rxant"), splitList(b.Flex.SliceValue(idx, "ant_list")))
+			if b.antCycle == nil {
+				b.antCycle = map[int]*antCycle{}
+			}
+			cyc = b.antCycle[idx]
+			if cyc == nil {
+				cyc = &antCycle{}
+				b.antCycle[idx] = cyc
+			}
+			cur := b.Flex.SliceValue(idx, "rxant")
+			// An antenna we did not set means the cycle is starting (or the
+			// operator changed it by hand): a main antenna becomes the new home.
+			if !strings.EqualFold(cur, cyc.lastSet) && isMainAnt(cur) {
+				cyc.home = strings.ToUpper(cur)
+			}
+			if cyc.home == "" {
+				cyc.home = "ANT1"
+				if tx := b.Flex.SliceValue(idx, "txant"); isMainAnt(tx) {
+					cyc.home = strings.ToUpper(tx)
+				}
+			}
+			ant = nextRxAnt(list, cur, cyc.home, splitList(b.Flex.SliceValue(idx, "ant_list")))
 		}
 		if ant == "" {
 			return "", errors.New("antenna is empty")
@@ -404,6 +454,9 @@ func (b *Bridge) Run(a Act) (string, error) {
 			return cmd, err
 		}
 		b.Flex.setSliceValue(idx, "rxant", ant)
+		if cyc != nil {
+			cyc.lastSet = ant
+		}
 		return cmd, nil
 	case TypeFlexRaw:
 		var sent []string

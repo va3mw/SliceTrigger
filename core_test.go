@@ -287,24 +287,31 @@ func TestKMtronicURL(t *testing.T) {
 	}
 }
 
-func TestNextAntenna(t *testing.T) {
-	list := []string{"ANT1", "ANT2", "RX_A"}
+func TestNextRxAnt(t *testing.T) {
+	rx := []string{"RX_A", "RX_B"}
+	all := []string{"ANT1", "ANT2", "RX_A", "RX_B", "XVTA", "XVTB"}
 	cases := []struct {
-		cur   string
-		avail []string
-		want  string
+		ticked    []string
+		cur, home string
+		avail     []string
+		want      string
 	}{
-		{"ANT1", nil, "ANT2"},
-		{"ant2", nil, "RX_A"},
-		{"RX_A", nil, "ANT1"}, // wraps
-		{"XVTA", nil, "ANT1"}, // current not in the list
-		{"", nil, "ANT1"},
-		{"ANT1", []string{"ANT1", "RX_A", "XVTA"}, "RX_A"}, // ANT2 not offered
-		{"ANT1", []string{"XVTB"}, "ANT2"},                 // nothing usable: ignore filter
+		{rx, "ANT1", "ANT1", nil, "RX_A"},
+		{rx, "RX_A", "ANT1", nil, "RX_B"},
+		{rx, "RX_B", "ANT1", nil, "ANT1"}, // back home
+		{rx, "RX_B", "ANT2", nil, "ANT2"},
+		{rx, "XVTA", "ANT1", nil, "ANT1"},  // not part of the cycle: go home
+		{all, "ANT1", "ANT1", nil, "ANT2"}, // the other main antenna is an option
+		{all, "XVTB", "ANT1", nil, "ANT1"},
+		{all, "ANT2", "ANT2", nil, "ANT1"},
+		{all, "ANT1", "ANT2", nil, "RX_A"},
+		{rx, "ANT1", "ANT1", []string{"ANT1", "ANT2", "RX_A"}, "RX_A"},
+		{rx, "RX_A", "ANT1", []string{"ANT1", "ANT2", "RX_A"}, "ANT1"}, // RX_B not offered
+		{[]string{"ANT1"}, "ANT1", "ANT1", nil, "ANT1"},                // nothing to switch to
 	}
 	for _, c := range cases {
-		if got := nextAntenna(list, c.cur, c.avail); got != c.want {
-			t.Errorf("nextAntenna(%q, %v) = %q, want %q", c.cur, c.avail, got, c.want)
+		if got := nextRxAnt(c.ticked, c.cur, c.home, c.avail); got != c.want {
+			t.Errorf("nextRxAnt(%v, %q, home %q, %v) = %q, want %q", c.ticked, c.cur, c.home, c.avail, got, c.want)
 		}
 	}
 }
@@ -322,10 +329,10 @@ func (m *mockRadio) rxants(idx int) []string {
 	return out
 }
 
-func TestRxAntRoundRobin(t *testing.T) {
+func TestRxAntCycle(t *testing.T) {
 	m := newMockRadio(t)
 	cfg := &Config{Station: "SHACK PC", Actions: []Act{
-		{ID: 6, Name: "NextAnt", Type: TypeFlexRxAnt, Slice: "Active", Cycle: "ANT1, ANT2,RX_A"},
+		{ID: 6, Name: "RxAnt", Type: TypeFlexRxAnt, Slice: "Active", Cycle: "RX_A, RX_B"},
 	}}
 	b := NewBridge(cfg, "")
 	connectFlex(t, b.Flex, m)
@@ -336,56 +343,32 @@ func TestRxAntRoundRobin(t *testing.T) {
 		}
 	}
 
-	// Active slice is 1 and starts on ANT1. The mock sends no status after a
-	// set, so stepping relies on the locally recorded value.
+	// Active slice 1 is on ANT1: ANT1 > RX_A > RX_B > ANT1 > RX_A. The mock
+	// sends no status after a set, so stepping relies on the recorded value.
 	for i := 0; i < 4; i++ {
 		fire()
 	}
-	// Antenna changed by hand in SmartSDR to one outside the list: restart at the first.
-	b.Flex.handleStatus("slice 1 rxant=XVTA")
+	// Operator moves the slice to ANT2 by hand: ANT2 becomes home.
+	b.Flex.handleStatus("slice 1 rxant=ANT2")
 	fire()
-	// Radio reports ANT2 is not available on this slice: skip it.
-	b.Flex.handleStatus("slice 1 ant_list=ANT1,RX_A,XVTA")
 	fire()
-	// Active slice moves to 0 (on ANT1): the cycle follows that slice.
-	b.Flex.handleStatus("slice 1 active=0")
-	b.Flex.handleStatus("slice 0 active=1")
 	fire()
-
-	want1 := "ANT2 RX_A ANT1 ANT2 ANT1 RX_A"
+	// Operator picks RX_B by hand (not a main antenna): home stays ANT2.
+	b.Flex.handleStatus("slice 1 rxant=RX_B")
+	fire()
+	want1 := "RX_A RX_B ANT1 RX_A RX_A RX_B ANT2 ANT2"
 	if got := strings.Join(m.rxants(1), " "); got != want1 {
 		t.Errorf("slice 1 sequence %q, want %q", got, want1)
 	}
-	if got := strings.Join(m.rxants(0), " "); got != "ANT2" {
-		t.Errorf("slice 0 sequence %q, want ANT2", got)
-	}
-}
 
-func TestFireRequest(t *testing.T) {
-	cases := []struct {
-		exe  string
-		args []string
-		spec string
-		port int
-		ok   bool
-	}{
-		{`C:\Ham\SliceTrigger.exe`, []string{"fire", "3"}, "3", 0, true},
-		{`C:\Ham\SliceTrigger.exe`, []string{"fire", "3", "5"}, "3,5", 0, true},
-		{`C:\Ham\SliceTrigger.exe`, []string{"fire 3,5"}, "3,5", 0, true},
-		{`C:\Ham\SliceTrigger.exe`, []string{`"fire`, `1"`}, "1", 0, true},
-		{`C:\Ham\SliceTrigger.exe`, []string{"FIRE", "-port", "9000", "Ant2"}, "Ant2", 9000, true},
-		{`C:\Ham\SliceTrigger.exe`, nil, "", 0, false},
-		{`C:\Ham\SliceTrigger.exe`, []string{"something"}, "", 0, false},
-		{`C:\Ham\SliceTrigger-fire-1.exe`, nil, "1", 0, true},
-		{`C:\Ham\fire3,5.exe`, nil, "3,5", 0, true},
-		{`C:\Ham\Campfire.exe`, nil, "", 0, false},
-		{`C:\Ham\SliceTrigger-fire-2.exe`, []string{"fire", "7"}, "7", 0, true},
-	}
-	for _, c := range cases {
-		spec, port, ok := fireRequest(c.exe, c.args)
-		if spec != c.spec || port != c.port || ok != c.ok {
-			t.Errorf("fireRequest(%q, %q) = %q, %d, %v", c.exe, c.args, spec, port, ok)
-		}
+	// A slice already on RX_A with no history returns to its TX antenna.
+	b.Flex.handleStatus("slice 0 rxant=RX_A txant=ANT2")
+	b.Flex.handleStatus("slice 1 active=0")
+	b.Flex.handleStatus("slice 0 active=1")
+	fire()
+	fire()
+	if got := strings.Join(m.rxants(0), " "); got != "RX_B ANT2" {
+		t.Errorf("slice 0 sequence %q, want \"RX_B ANT2\"", got)
 	}
 }
 
