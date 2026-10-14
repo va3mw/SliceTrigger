@@ -101,6 +101,7 @@ func runApp() {
 				Action{AssignTo: &g.escAction, Text: "&ESC stops voice keyer playback",
 					Checkable: true, Checked: cfg.EscStopsDVK, OnTriggered: g.onEscToggle},
 				Separator{},
+				Action{Text: "&Install .exe in %APPDATA% (recommended)...", OnTriggered: g.onInstall},
 				Action{Text: "Create &desktop shortcut", OnTriggered: g.onShortcut},
 			}},
 			Action{Text: "&Log", OnTriggered: g.showLog},
@@ -258,14 +259,81 @@ func (g *gui) showState(connected bool, text string) {
 }
 
 func (g *gui) onShortcut() {
+	exe, err := os.Executable()
+	if err != nil {
+		g.logf("Desktop shortcut failed: %v", err)
+		return
+	}
 	go func() {
-		p, err := createDesktopShortcut()
+		p, err := createDesktopShortcut(exe)
 		if err != nil {
 			g.logf("Desktop shortcut failed: %v", err)
 			return
 		}
 		g.logf("Desktop shortcut created: %s", p)
 	}()
+}
+
+// onInstall copies SliceTrigger and its settings to %APPDATA%\SliceTrigger,
+// points the desktop shortcut there and restarts from the installed copy.
+func (g *gui) onInstall() {
+	exe, err := os.Executable()
+	if err != nil {
+		g.logf("Install: %v", err)
+		return
+	}
+	dir, err := installDir()
+	if err != nil {
+		g.logf("Install: %v", err)
+		return
+	}
+	dst := filepath.Join(dir, "SliceTrigger.exe")
+	if samePath(exe, dst) {
+		walk.MsgBox(g.mw, "Install", "SliceTrigger is already installed and running from\n"+dir, walk.MsgBoxIconInformation)
+		return
+	}
+	msg := "Install SliceTrigger to\n\n" + dir + "\n\n" +
+		"Your current settings and actions are copied there, a desktop shortcut is created, " +
+		"and SliceTrigger restarts from the new location. Updates will install there too.\n\n" +
+		"Afterwards, use Action > Copy N1MM macro again so your N1MM function keys point to the new location " +
+		"(the old lines keep working as long as this copy stays where it is)."
+	if strings.Contains(dst, " ") {
+		msg += "\n\nWARNING: this path contains a space, and N1MM cannot run an exe from a path with spaces. " +
+			"Consider a folder such as C:\\Ham instead."
+	}
+	if walk.MsgBox(g.mw, "Install SliceTrigger", msg+"\n\nInstall now?", walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
+		return
+	}
+	installed, err := installTo(exe, g.b.ConfigPath(), dir)
+	if err != nil {
+		g.logf("Install failed: %v", err)
+		walk.MsgBox(g.mw, "Install", "Install failed:\n\n"+err.Error(), walk.MsgBoxIconWarning)
+		return
+	}
+	g.logf("Installed to %s", installed)
+	if p, err := createDesktopShortcut(installed); err != nil {
+		g.logf("Desktop shortcut failed: %v", err)
+	} else {
+		g.logf("Desktop shortcut created: %s", p)
+	}
+	g.restartAs(installed)
+}
+
+// restartAs frees the trigger port and the radio, starts exe and closes this window.
+func (g *gui) restartAs(exe string) {
+	removeEscHook()
+	g.b.Flex.OnState = nil
+	g.b.Flex.Disconnect()
+	if g.trigger != nil {
+		g.trigger.Close()
+		g.trigger = nil
+	}
+	cmd := exec.Command(exe)
+	cmd.Dir = filepath.Dir(exe)
+	if err := cmd.Start(); err != nil {
+		walk.MsgBox(g.mw, "SliceTrigger", "Could not start "+exe+":\n\n"+err.Error()+"\n\nPlease start it yourself.", walk.MsgBoxIconWarning)
+	}
+	g.mw.Close()
 }
 
 func (g *gui) onAbout() {
@@ -332,20 +400,7 @@ func (g *gui) installUpdate(info UpdateInfo) {
 				walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
 				return
 			}
-			// Free the trigger port and the radio before the new copy starts.
-			removeEscHook()
-			g.b.Flex.OnState = nil
-			g.b.Flex.Disconnect()
-			if g.trigger != nil {
-				g.trigger.Close()
-				g.trigger = nil
-			}
-			cmd := exec.Command(exe)
-			cmd.Dir = filepath.Dir(exe)
-			if err := cmd.Start(); err != nil {
-				walk.MsgBox(g.mw, "Update", "Could not restart: "+err.Error()+"\n\nPlease start SliceTrigger again.", walk.MsgBoxIconWarning)
-			}
-			g.mw.Close()
+			g.restartAs(exe)
 		})
 	}()
 }

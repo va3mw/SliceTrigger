@@ -15,11 +15,7 @@ const createNoWindow = 0x08000000
 // (wherever Windows has it, including a OneDrive-redirected desktop) and
 // returns its path. It uses the WScript.Shell COM object via PowerShell; the
 // paths go in through environment variables so no quoting is needed.
-func createDesktopShortcut() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
+func createDesktopShortcut(exe string) (string, error) {
 	script := `$ErrorActionPreference = 'Stop'
 $d = [Environment]::GetFolderPath('Desktop')
 $p = Join-Path $d 'SliceTrigger.lnk'

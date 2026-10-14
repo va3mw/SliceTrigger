@@ -30,7 +30,11 @@ installer and no runtime are needed.
 2. Enter the radio IP (or click **Discover**), optionally a SmartSDR **Station** name (needed for multiFLEX), and click **Connect**.
    The light turns green and the radio's name appears when connected. Start SmartSDR first; if actions
    report "no active slice" right after connecting, click Disconnect and Connect again.
-3. Optional: **Settings > Create desktop shortcut** puts a SliceTrigger shortcut, with the ST icon, on your desktop.
+3. Recommended: **Settings > Install .exe in %APPDATA%** copies SliceTrigger and your settings to
+   `%APPDATA%\SliceTrigger`, creates a desktop shortcut and restarts from there. Then use
+   **Copy N1MM macro** again so your function keys point to the installed copy. (If your Windows user
+   name contains a space, the path will too, and N1MM cannot run it; use a folder like `C:\Ham` instead.)
+   **Settings > Create desktop shortcut** on its own just adds the shortcut.
 4. Use **Action > Add** to create actions and check each one with **Action > Test**. The bottom line shows `OK` or the error.
 
 The main window is deliberately small so it can stay on screen while you
@@ -213,6 +217,7 @@ On non-Windows systems `go build` produces a headless build (no GUI) for develop
 | `main.go` | entry point, `fire` client mode and named-copy detection |
 | `version.go`, `VERSION` | release version; `VERSION` also holds the exe's SHA-256 for the updater |
 | `update.go` | update check, download, checksum, swap |
+| `install.go` | install to `%APPDATA%\SliceTrigger` |
 | `shortcut_windows.go` | desktop shortcut |
 | `internal/sticon`, `tools/mkicon` | the ST icon (drawn in code) and its generator |
 | `assets/` | generated `.ico` |

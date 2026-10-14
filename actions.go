@@ -343,6 +343,9 @@ func NewBridge(cfg *Config, path string) *Bridge {
 	}
 }
 
+// ConfigPath is the file the config is saved to.
+func (b *Bridge) ConfigPath() string { return b.path }
+
 func (b *Bridge) Config() Config {
 	b.mu.Lock()
 	defer b.mu.Unlock()

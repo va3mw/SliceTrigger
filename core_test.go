@@ -573,6 +573,54 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
+func TestInstallTo(t *testing.T) {
+	src := t.TempDir()
+	exe := filepath.Join(src, "SliceTrigger.exe")
+	cfg := filepath.Join(src, configName)
+	os.WriteFile(exe, []byte("MZ v2"), 0o755)
+	os.WriteFile(cfg, []byte(`{"port":9000}`), 0o644)
+
+	dir := filepath.Join(t.TempDir(), "AppData", "SliceTrigger")
+	got, err := installTo(exe, cfg, dir)
+	if err != nil || got != filepath.Join(dir, "SliceTrigger.exe") {
+		t.Fatalf("installTo: %q, %v", got, err)
+	}
+	if b, _ := os.ReadFile(got); string(b) != "MZ v2" {
+		t.Error("exe not copied")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, configName)); string(b) != `{"port":9000}` {
+		t.Error("config not copied")
+	}
+
+	// Installing again over an existing install keeps the previous exe as
+	// .old and the previous config as .bak.
+	os.WriteFile(exe, []byte("MZ v3"), 0o755)
+	os.WriteFile(cfg, []byte(`{"port":9001}`), 0o644)
+	if _, err := installTo(exe, cfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "SliceTrigger.exe.old")); string(b) != "MZ v2" {
+		t.Error("previous exe not kept as .old")
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, configName+".bak")); string(b) != `{"port":9000}` {
+		t.Error("previous config not kept as .bak")
+	}
+
+	// Running from the install folder already: refuse.
+	if _, err := installTo(filepath.Join(dir, "SliceTrigger.exe"), filepath.Join(dir, configName), dir); err == nil {
+		t.Error("install onto itself accepted")
+	}
+
+	// No config yet: only the exe is installed.
+	dir2 := t.TempDir()
+	if _, err := installTo(exe, filepath.Join(src, "missing.json"), dir2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir2, configName)); err == nil {
+		t.Error("config created from nothing")
+	}
+}
+
 func TestUnescape(t *testing.T) {
 	got, err := unescape(`AB\r\n\x00\xfF\t\\x`)
 	want := "AB\r\n\x00\xff\t\\x"
