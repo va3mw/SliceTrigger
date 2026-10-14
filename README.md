@@ -1,5 +1,7 @@
 # SliceTrigger
 
+<img src="docs/icon.png" width="96" align="right" alt="SliceTrigger icon">
+
 Lets N1MM Logger+ function keys trigger actions on devices N1MM cannot control
 via CAT. One key press can:
 
@@ -28,7 +30,8 @@ installer and no runtime are needed.
 2. Enter the radio IP (or click **Discover**), optionally a SmartSDR **Station** name (needed for multiFLEX), and click **Connect**.
    The light turns green and the radio's name appears when connected. Start SmartSDR first; if actions
    report "no active slice" right after connecting, click Disconnect and Connect again.
-3. Use **Action > Add** to create actions and check each one with **Action > Test**. The bottom line shows `OK` or the error.
+3. Optional: **Settings > Create desktop shortcut** puts a SliceTrigger shortcut, with the ST icon, on your desktop.
+4. Use **Action > Add** to create actions and check each one with **Action > Test**. The bottom line shows `OK` or the error.
 
 The main window is deliberately small so it can stay on screen while you
 operate. The light next to Connect is green when connected (with the radio's
@@ -40,6 +43,22 @@ action to edit it. The trigger port is under **Settings**. **Log** opens the
 full log in a separate window you can park on another screen; the line at the
 bottom of the main window shows the latest message. Identical consecutive
 messages are logged once, with a repeat count.
+
+## Updates
+
+**Help > Check for updates** compares your version with the one on GitHub
+(`VERSION` in this repository). If a newer one exists it offers to download it
+into the folder SliceTrigger is running from, checks the download against the
+published SHA-256, swaps it in and restarts. The previous exe is kept as
+`SliceTrigger.exe.old` until the next start. SliceTrigger also checks once at
+startup and notes an available update in the log; it never installs without
+asking.
+
+- The folder must be writable, so keep SliceTrigger somewhere like `C:\Ham`
+  rather than Program Files.
+- Named copies such as `SliceTrigger-fire-1.exe` are not updated; copy the new
+  exe over them if you use them.
+- Versions before 0.8.0 have no updater: download 0.8.0 by hand once.
 
 ## N1MM Logger+ setup
 
@@ -169,9 +188,15 @@ Relay/HTTP passwords are stored there in plain text.
 
 Windows: `build.bat`. macOS/Linux cross-compile: `./build.sh`.
 
-Both run `rsrc` to produce `rsrc_windows_amd64.syso` from `slicetrigger.manifest`
-(common controls v6 — walk crashes at startup without it) and build with
-`-ldflags "-H windowsgui"`.
+Both generate the icon (`tools/mkicon` writes `assets/slicetrigger.ico` and
+`docs/icon.png`), run `rsrc` to produce `rsrc_windows_amd64.syso` from the icon
+and `slicetrigger.manifest` (common controls v6 — walk crashes at startup
+without it), build with `-ldflags "-H windowsgui"`, and write `VERSION` (the
+version from `version.go` and the exe's SHA-256).
+
+**Releasing:** bump `Version` in `version.go`, run the build, and commit
+`SliceTrigger.exe` and `VERSION` together. "Check for updates" only offers a
+build whose version is higher than the running one.
 
 Tests (any OS): `go test -race .` — includes a mock Flex radio on a local TCP port.
 On non-Windows systems `go build` produces a headless build (no GUI) for development.
@@ -186,11 +211,16 @@ On non-Windows systems `go build` produces a headless build (no GUI) for develop
 | `server.go` | HTTP trigger listener and `fire` client |
 | `config.go` | config location, load, save |
 | `main.go` | entry point, `fire` client mode and named-copy detection |
+| `version.go`, `VERSION` | release version; `VERSION` also holds the exe's SHA-256 for the updater |
+| `update.go` | update check, download, checksum, swap |
+| `shortcut_windows.go` | desktop shortcut |
+| `internal/sticon`, `tools/mkicon` | the ST icon (drawn in code) and its generator |
+| `assets/` | generated `.ico` |
 | `gui_windows.go` | walk GUI: main window, log window, edit dialog, status light |
 | `eschook_windows.go` | system-wide ESC key hook for stopping the voice keyer |
 | `app_other.go` | headless entry point for non-Windows |
 | `core_test.go` | unit tests, including the mock Flex radio |
-| `docs/` | README images |
+| `docs/` | README images, including the icon |
 
 ## Status
 

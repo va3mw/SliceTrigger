@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -488,6 +492,84 @@ func TestVoiceKeyerWithoutStatus(t *testing.T) {
 	}
 	if msg, _ := b.StopDVK(true); msg != "" {
 		t.Errorf("second ESC: %q", msg)
+	}
+}
+
+func TestNewerVersion(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"0.8.1", "0.8.0", true},
+		{"0.10.0", "0.9.9", true},
+		{"1.0", "0.99.99", true},
+		{"0.8.0", "0.8.0", false},
+		{"0.8", "0.8.0", false},
+		{"0.7.9", "0.8.0", false},
+	}
+	for _, c := range cases {
+		if got := newerVersion(c.a, c.b); got != c.want {
+			t.Errorf("newerVersion(%q, %q) = %v", c.a, c.b, got)
+		}
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	exe := make([]byte, 2<<20)
+	copy(exe, "MZ new build")
+	sum := sha256.Sum256(exe)
+	version := "9.9.9\n" + hex.EncodeToString(sum[:]) + "\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/VERSION":
+			io.WriteString(w, version)
+		case "/SliceTrigger.exe":
+			w.Write(exe)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	base := srv.URL + "/"
+
+	info, err := fetchLatest(base)
+	if err != nil || info.Version != "9.9.9" || !newerVersion(info.Version, Version) {
+		t.Fatalf("fetchLatest: %+v, %v", info, err)
+	}
+
+	dir := t.TempDir()
+	cur := filepath.Join(dir, "SliceTrigger.exe")
+	os.WriteFile(cur, []byte("MZ old build"), 0o755)
+	newPath, err := downloadUpdate(base, info, cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := installUpdate(cur, newPath); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(cur); !bytes.Equal(got, exe) {
+		t.Error("exe not replaced")
+	}
+	if got, _ := os.ReadFile(cur + ".old"); string(got) != "MZ old build" {
+		t.Error("old exe not kept")
+	}
+	cleanupOldExe(cur)
+	if _, err := os.Stat(cur + ".old"); err == nil {
+		t.Error(".old not removed")
+	}
+
+	// A checksum mismatch leaves nothing behind.
+	bad := info
+	bad.SHA256 = strings.Repeat("0", 64)
+	if _, err := downloadUpdate(base, bad, cur); err == nil {
+		t.Error("bad checksum accepted")
+	}
+	if _, err := os.Stat(cur + ".new"); err == nil {
+		t.Error(".new left after failed download")
+	}
+	version = "garbage\n"
+	if _, err := fetchLatest(base); err == nil {
+		t.Error("malformed VERSION accepted")
 	}
 }
 

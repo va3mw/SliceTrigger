@@ -2,14 +2,16 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"image/color"
-	"math"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"slicetrigger/internal/sticon"
 
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
@@ -98,8 +100,14 @@ func runApp() {
 				Action{Text: "Trigger &port...", OnTriggered: g.onTriggerPort},
 				Action{AssignTo: &g.escAction, Text: "&ESC stops voice keyer playback",
 					Checkable: true, Checked: cfg.EscStopsDVK, OnTriggered: g.onEscToggle},
+				Separator{},
+				Action{Text: "Create &desktop shortcut", OnTriggered: g.onShortcut},
 			}},
 			Action{Text: "&Log", OnTriggered: g.showLog},
+			Menu{Text: "&Help", Items: []MenuItem{
+				Action{Text: "Check for &updates...", OnTriggered: func() { g.checkUpdates(true) }},
+				Action{Text: "&About SliceTrigger", OnTriggered: g.onAbout},
+			}},
 		},
 		Layout: VBox{Margins: Margins{Left: 4, Top: 4, Right: 4, Bottom: 4}, Spacing: 4},
 		Children: []Widget{
@@ -161,13 +169,18 @@ func runApp() {
 		g.logWin.Hide()
 	})
 
+	g.logf("SliceTrigger %s", Version)
 	g.logf("Config: %s", path)
+	if exe, err := os.Executable(); err == nil {
+		cleanupOldExe(exe)
+	}
 	if cfgErr != nil {
 		g.logf("Config could not be read, using defaults: %v", cfgErr)
 	}
 	g.icons = map[string]*walk.Icon{}
 	for name, c := range map[string]walk.Color{"on": lightOn, "wait": lightWait, "off": lightOff} {
-		if ic, err := dotIcon(c); err == nil {
+		rgb := color.NRGBA{uint8(c), uint8(c >> 8), uint8(c >> 16), 0xFF} // walk.Color is 0x00BBGGRR
+		if ic, err := walk.NewIconFromImageForDPI(sticon.Draw(64, rgb), 192); err == nil {
 			g.icons[name] = ic
 		}
 	}
@@ -178,6 +191,7 @@ func runApp() {
 	if cfg.AutoConnect && cfg.RadioIP != "" {
 		g.connect()
 	}
+	g.checkUpdates(false)
 	g.mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
 		removeEscHook()
 		g.b.Flex.OnState = nil
@@ -243,26 +257,97 @@ func (g *gui) showState(connected bool, text string) {
 	}
 }
 
-// dotIcon draws a round "light" icon in colour c.
-func dotIcon(c walk.Color) (*walk.Icon, error) {
-	const n = 32
-	r, gg, b := uint8(c&0xFF), uint8(c>>8&0xFF), uint8(c>>16&0xFF)
-	img := image.NewNRGBA(image.Rect(0, 0, n, n))
-	for y := 0; y < n; y++ {
-		for x := 0; x < n; x++ {
-			d := math.Hypot(float64(x)+0.5-n/2, float64(y)+0.5-n/2)
-			a := math.Max(0, math.Min(1, 14.5-d)) // anti-aliased edge
-			if a == 0 {
-				continue
-			}
-			shade := 1.0
-			if d > 11 {
-				shade = 0.7 // darker rim
-			}
-			img.SetNRGBA(x, y, color.NRGBA{uint8(float64(r) * shade), uint8(float64(gg) * shade), uint8(float64(b) * shade), uint8(a * 255)})
+func (g *gui) onShortcut() {
+	go func() {
+		p, err := createDesktopShortcut()
+		if err != nil {
+			g.logf("Desktop shortcut failed: %v", err)
+			return
 		}
+		g.logf("Desktop shortcut created: %s", p)
+	}()
+}
+
+func (g *gui) onAbout() {
+	walk.MsgBox(g.mw, "About SliceTrigger",
+		fmt.Sprintf("SliceTrigger %s\n\nN1MM Logger+ function keys for FlexRadio, relays and more.\n\nhttps://github.com/va3mw/SliceTrigger", Version),
+		walk.MsgBoxIconInformation)
+}
+
+// checkUpdates looks for a newer version on GitHub. With interactive false
+// (at startup) it only logs when an update exists; with true it reports the
+// result and offers to download and install.
+func (g *gui) checkUpdates(interactive bool) {
+	if interactive {
+		g.logf("Checking for updates...")
 	}
-	return walk.NewIconFromImageForDPI(img, 192)
+	go func() {
+		info, err := fetchLatest(updateBase)
+		g.mw.Synchronize(func() {
+			switch {
+			case err != nil:
+				if interactive {
+					walk.MsgBox(g.mw, "Check for updates", "Could not check for updates:\n\n"+err.Error(), walk.MsgBoxIconWarning)
+				}
+				g.logf("Update check failed: %v", err)
+			case !newerVersion(info.Version, Version):
+				if interactive {
+					walk.MsgBox(g.mw, "Check for updates", fmt.Sprintf("SliceTrigger %s is the latest version.", Version), walk.MsgBoxIconInformation)
+				}
+			case !interactive:
+				g.logf("Update available: %s (you have %s). Use Help > Check for updates.", info.Version, Version)
+			default:
+				if walk.MsgBox(g.mw, "Check for updates",
+					fmt.Sprintf("SliceTrigger %s is available (you have %s).\n\nDownload and install it now?", info.Version, Version),
+					walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) == walk.DlgCmdYes {
+					g.installUpdate(info)
+				}
+			}
+		})
+	}()
+}
+
+func (g *gui) installUpdate(info UpdateInfo) {
+	exe, err := os.Executable()
+	if err != nil {
+		g.logf("Update: %v", err)
+		return
+	}
+	g.logf("Downloading SliceTrigger %s...", info.Version)
+	go func() {
+		newPath, err := downloadUpdate(updateBase, info, exe)
+		if err == nil {
+			err = installUpdate(exe, newPath)
+		}
+		g.mw.Synchronize(func() {
+			if err != nil {
+				g.logf("Update failed: %v", err)
+				walk.MsgBox(g.mw, "Update", "The update failed:\n\n"+err.Error()+
+					"\n\nIf SliceTrigger is in a protected folder such as Program Files, move it to a folder like C:\\Ham.",
+					walk.MsgBoxIconWarning)
+				return
+			}
+			g.logf("Installed SliceTrigger %s", info.Version)
+			if walk.MsgBox(g.mw, "Update", fmt.Sprintf("SliceTrigger %s is installed.\n\nRestart now?", info.Version),
+				walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
+				return
+			}
+			// Free the trigger port and the radio before the new copy starts.
+			removeEscHook()
+			g.b.Flex.OnState = nil
+			g.b.Flex.Disconnect()
+			if g.trigger != nil {
+				g.trigger.Close()
+				g.trigger = nil
+			}
+			cmd := exec.Command(exe)
+			cmd.Dir = filepath.Dir(exe)
+			if err := cmd.Start(); err != nil {
+				walk.MsgBox(g.mw, "Update", "Could not restart: "+err.Error()+"\n\nPlease start SliceTrigger again.", walk.MsgBoxIconWarning)
+			}
+			g.mw.Close()
+		})
+	}()
 }
 
 func (g *gui) showLog() {
