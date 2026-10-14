@@ -119,7 +119,7 @@ func runApp() {
 						ToolTipText: "Radio IP address"},
 					PushButton{Text: "Discover", OnClicked: g.onDiscover},
 					LineEdit{AssignTo: &g.stationEdit, Text: cfg.Station, MinSize: Size{Width: 70}, MaxSize: Size{Width: 110},
-						ToolTipText: "Optional SmartSDR station name (multiFLEX). Empty = any client."},
+						ToolTipText: "SmartSDR station name. Leave empty: multiFLEX is not yet supported."},
 					PushButton{AssignTo: &g.connectBtn, Text: "Connect", OnClicked: g.onConnect},
 					Label{AssignTo: &g.light, Text: "\u25CF", TextColor: lightOff, Font: Font{PointSize: 12},
 						ToolTipText: "Green: connected. Amber: connecting. Grey: not connected."},
