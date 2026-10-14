@@ -76,6 +76,8 @@ func (m *mockRadio) serve(c net.Conn) {
 			for _, s := range mockStatus {
 				fmt.Fprintf(c, "S%s|%s\n", mockHandle, s)
 			}
+		case cmd == "info":
+			fmt.Fprintf(c, "R%s|0|model=\"FLEX-8600\",chassis_serial=\"1234-5678\",name=\"Contest\",callsign=\"VA3MW\",software_ver=4.1.3.39644\n", seq)
 		case cmd == "sub dvk all" && m.noDVK:
 			fmt.Fprintf(c, "R%s|50000015|unknown command\n", seq)
 		case cmd == "sub dvk all":
@@ -242,6 +244,32 @@ func TestFlexReconnect(t *testing.T) {
 	waitSynced(t, f)
 	if idx, err := f.Resolve("B", ""); err != nil || idx != 1 {
 		t.Errorf("after reconnect: %d, %v", idx, err)
+	}
+}
+
+func TestRadioInfo(t *testing.T) {
+	m := newMockRadio(t)
+	f := NewFlex()
+	var mu sync.Mutex
+	var states []string
+	f.OnState = func(connected bool, text string) {
+		mu.Lock()
+		states = append(states, fmt.Sprint(connected, " ", text))
+		mu.Unlock()
+	}
+	connectFlex(t, f, m)
+	waitFor(t, "radio label", func() bool { return f.RadioLabel() == "Contest (FLEX-8600)" })
+	waitFor(t, "state update", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(states) > 0 && states[len(states)-1] == "true Contest (FLEX-8600)"
+	})
+	if f.RadioName() != "Contest" {
+		t.Errorf("name %q", f.RadioName())
+	}
+	info := parseInfo(`model="FLEX-6600",name="My\ Radio",software_ver=3.5.9`)
+	if info["model"] != "FLEX-6600" || info["name"] != "My Radio" || info["software_ver"] != "3.5.9" {
+		t.Errorf("parseInfo: %v", info)
 	}
 }
 

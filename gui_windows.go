@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -44,6 +47,8 @@ type gui struct {
 	stationEdit *walk.LineEdit
 	connectBtn  *walk.PushButton
 	statusLbl   *walk.Label
+	light       *walk.Label
+	icons       map[string]*walk.Icon
 	tv          *walk.TableView
 	lastEdit    *walk.LineEdit
 
@@ -66,7 +71,7 @@ func runApp() {
 	g.b.Logf = g.logf
 	g.b.Flex.Logf = g.logf
 	g.b.Flex.OnState = func(connected bool, text string) {
-		g.mw.Synchronize(func() { g.statusLbl.SetText(text) })
+		g.mw.Synchronize(func() { g.showState(connected, text) })
 	}
 
 	actionItems := func() []MenuItem {
@@ -107,6 +112,8 @@ func runApp() {
 					LineEdit{AssignTo: &g.stationEdit, Text: cfg.Station, MinSize: Size{Width: 70}, MaxSize: Size{Width: 110},
 						ToolTipText: "Optional SmartSDR station name (multiFLEX). Empty = any client."},
 					PushButton{AssignTo: &g.connectBtn, Text: "Connect", OnClicked: g.onConnect},
+					Label{AssignTo: &g.light, Text: "\u25CF", TextColor: lightOff, Font: Font{PointSize: 12},
+						ToolTipText: "Green: connected. Amber: connecting. Grey: not connected."},
 					Label{AssignTo: &g.statusLbl, Text: "Not connected"},
 					HSpacer{},
 				},
@@ -158,6 +165,14 @@ func runApp() {
 	if cfgErr != nil {
 		g.logf("Config could not be read, using defaults: %v", cfgErr)
 	}
+	g.icons = map[string]*walk.Icon{}
+	for name, c := range map[string]walk.Color{"on": lightOn, "wait": lightWait, "off": lightOff} {
+		if ic, err := dotIcon(c); err == nil {
+			g.icons[name] = ic
+		}
+	}
+	g.showState(false, "Not connected")
+
 	g.startTrigger(cfg.Port)
 	g.applyEscHook(cfg.EscStopsDVK)
 	if cfg.AutoConnect && cfg.RadioIP != "" {
@@ -195,6 +210,59 @@ func (g *gui) onEscToggle() {
 	on := g.escAction.Checked()
 	g.save(func(c *Config) { c.EscStopsDVK = on })
 	g.applyEscHook(on)
+}
+
+var (
+	lightOn   = walk.RGB(0x1E, 0xB0, 0x3C)
+	lightWait = walk.RGB(0xE0, 0x9A, 0x10)
+	lightOff  = walk.RGB(0x9A, 0x9A, 0x9A)
+)
+
+// showState updates the status text, the coloured light, the window title
+// and the window/taskbar icon.
+func (g *gui) showState(connected bool, text string) {
+	state, c := "off", lightOff
+	switch {
+	case connected:
+		state, c = "on", lightOn
+	case g.wantConn:
+		state, c = "wait", lightWait
+	}
+	g.statusLbl.SetText(text)
+	g.light.SetTextColor(c)
+	g.light.Invalidate()
+	title := "SliceTrigger"
+	if connected {
+		if name := g.b.Flex.RadioName(); name != "" {
+			title = "SliceTrigger - " + name
+		}
+	}
+	g.mw.SetTitle(title)
+	if ic := g.icons[state]; ic != nil {
+		g.mw.SetIcon(ic)
+	}
+}
+
+// dotIcon draws a round "light" icon in colour c.
+func dotIcon(c walk.Color) (*walk.Icon, error) {
+	const n = 32
+	r, gg, b := uint8(c&0xFF), uint8(c>>8&0xFF), uint8(c>>16&0xFF)
+	img := image.NewNRGBA(image.Rect(0, 0, n, n))
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			d := math.Hypot(float64(x)+0.5-n/2, float64(y)+0.5-n/2)
+			a := math.Max(0, math.Min(1, 14.5-d)) // anti-aliased edge
+			if a == 0 {
+				continue
+			}
+			shade := 1.0
+			if d > 11 {
+				shade = 0.7 // darker rim
+			}
+			img.SetNRGBA(x, y, color.NRGBA{uint8(float64(r) * shade), uint8(float64(gg) * shade), uint8(float64(b) * shade), uint8(a * 255)})
+		}
+	}
+	return walk.NewIconFromImageForDPI(img, 192)
 }
 
 func (g *gui) showLog() {
@@ -309,6 +377,7 @@ func (g *gui) onConnect() {
 		g.connectBtn.SetText("Connect")
 		g.save(func(c *Config) { c.AutoConnect = false })
 		g.b.Flex.Disconnect()
+		g.showState(false, "Not connected")
 		return
 	}
 	g.connect()

@@ -36,6 +36,7 @@ type Flex struct {
 	slices  map[int]map[string]string
 	clients map[uint32]map[string]string
 	dvk     DVKState
+	info    map[string]string
 	stop    chan struct{}
 }
 
@@ -162,6 +163,7 @@ func (f *Flex) session(conn net.Conn, stop chan struct{}) error {
 		f.slices = map[int]map[string]string{}
 		f.clients = map[uint32]map[string]string{}
 		f.dvk = DVKState{}
+		f.info = nil
 		f.mu.Unlock()
 	}()
 
@@ -188,7 +190,7 @@ func (f *Flex) session(conn net.Conn, stop chan struct{}) error {
 			f.mu.Unlock()
 			f.logf("Flex: connected, version %s, handle %s", version, line[1:])
 			f.state(stop, true, "Connected (v"+version+")")
-			go f.afterHandshake(conn, done)
+			go f.afterHandshake(conn, done, stop)
 		case 'R':
 			f.handleReply(line[1:])
 		case 'S':
@@ -199,7 +201,17 @@ func (f *Flex) session(conn net.Conn, stop chan struct{}) error {
 	}
 }
 
-func (f *Flex) afterHandshake(conn net.Conn, done chan struct{}) {
+func (f *Flex) afterHandshake(conn net.Conn, done, stop chan struct{}) {
+	if rep, err := f.Command("info", 5*time.Second); err == nil {
+		info := parseInfo(rep.Msg)
+		f.mu.Lock()
+		f.info = info
+		f.mu.Unlock()
+		f.logf("Flex: radio %s", f.RadioLabel())
+		f.state(stop, true, f.RadioLabel())
+	} else {
+		f.logf("Flex: \"info\" failed: %v", err)
+	}
 	// "sub dvk all" fails on radios without the voice keyer; that is only logged.
 	for _, cmd := range []string{"sub client all", "sub slice all", "sub dvk all"} {
 		if _, err := f.Command(cmd, 5*time.Second); err != nil {
@@ -354,6 +366,45 @@ func (f *Flex) Command(cmd string, timeout time.Duration) (FlexReply, error) {
 		f.mu.Unlock()
 		return FlexReply{}, errFlexTimeout
 	}
+}
+
+// parseInfo parses the "info" reply: comma separated key=value pairs, values
+// optionally quoted (model="FLEX-6600",name="Contest",software_ver=3.5.9).
+func parseInfo(s string) map[string]string {
+	m := map[string]string{}
+	for _, kv := range strings.Split(s, ",") {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		v = strings.NewReplacer(`\`, "", `"`, "").Replace(strings.TrimSpace(v))
+		m[strings.TrimSpace(k)] = v
+	}
+	return m
+}
+
+// RadioName is the radio's nickname, falling back to its model.
+func (f *Flex) RadioName() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if n := f.info["name"]; n != "" {
+		return n
+	}
+	return f.info["model"]
+}
+
+// RadioLabel describes the connected radio, e.g. "Contest (FLEX-8600)".
+func (f *Flex) RadioLabel() string {
+	f.mu.Lock()
+	name, model := f.info["name"], f.info["model"]
+	f.mu.Unlock()
+	switch {
+	case name != "" && model != "":
+		return name + " (" + model + ")"
+	case name != "" || model != "":
+		return name + model
+	}
+	return "Connected"
 }
 
 func (f *Flex) DVK() DVKState {

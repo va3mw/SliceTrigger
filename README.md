@@ -1,8 +1,20 @@
 # SliceTrigger
 
 Lets N1MM Logger+ function keys trigger actions on devices N1MM cannot control
-via CAT: FlexRadio RX antenna / raw API commands, KMtronic WEB relays, generic
-HTTP GET and generic TCP sends.
+via CAT. One key press can:
+
+- switch the FlexRadio receive antenna of the active slice, or cycle
+  ANT1 > RX_A > RX_B > back to ANT1
+- play a FlexRadio voice keyer (DVK) memory, with ESC to stop it
+- send raw SmartSDR API commands
+- switch KMtronic WEB relays
+- send an HTTP GET or raw TCP data to any other device
+
+![SliceTrigger main window and log window](docs/screenshot.png)
+
+*Main window (top) and the separate log window. Screenshot from an earlier
+build; the current one adds a green/amber/grey connection light and shows
+the radio's name next to it.*
 
 ## Download
 
@@ -14,10 +26,15 @@ installer and no runtime are needed.
 1. Copy `SliceTrigger.exe` to a path **without spaces**, e.g. `C:\Ham\SliceTrigger.exe`, and start it.
    Leave it running while you operate; the function keys talk to the running instance.
 2. Enter the radio IP (or click **Discover**), optionally a SmartSDR **Station** name (needed for multiFLEX), and click **Connect**.
+   The light turns green and the radio's name appears when connected. Start SmartSDR first; if actions
+   report "no active slice" right after connecting, click Disconnect and Connect again.
 3. Use **Action > Add** to create actions and check each one with **Action > Test**. The bottom line shows `OK` or the error.
 
 The main window is deliberately small so it can stay on screen while you
-operate. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
+operate. The light next to Connect is green when connected (with the radio's
+name and model beside it), amber while connecting or reconnecting, and grey
+when disconnected. The window title and taskbar icon follow it, so the state
+is visible from the taskbar too. Add, edit, duplicate, delete, test and "Copy N1MM macro" are in the
 **Action** menu and on the right-click menu of the action list; double-click an
 action to edit it. The trigger port is under **Settings**. **Log** opens the
 full log in a separate window you can park on another screen; the line at the
@@ -165,24 +182,32 @@ On non-Windows systems `go build` produces a headless build (no GUI) for develop
 |---|---|
 | `flex.go` | Flex TCP API client: handshake, command/reply, status merge, slice resolution, reconnect |
 | `discovery.go`, `reuse_*.go` | UDP 4992 discovery listener with `SO_REUSEADDR` |
-| `actions.go` | action model, KMtronic/HTTP/TCP senders, `Bridge.Fire` |
+| `actions.go` | action model, RX antenna cycle, voice keyer, KMtronic/HTTP/TCP senders, `Bridge.Fire` |
 | `server.go` | HTTP trigger listener and `fire` client |
 | `config.go` | config location, load, save |
-| `gui_windows.go` | walk GUI |
+| `main.go` | entry point, `fire` client mode and named-copy detection |
+| `gui_windows.go` | walk GUI: main window, log window, edit dialog, status light |
+| `eschook_windows.go` | system-wide ESC key hook for stopping the voice keyer |
 | `app_other.go` | headless entry point for non-Windows |
-| `core_test.go` | unit tests |
+| `core_test.go` | unit tests, including the mock Flex radio |
+| `docs/` | README images |
 
 ## Status
 
-The core is covered by unit tests against a mock radio. It has not yet been
-verified against a real FlexRadio, a real KMtronic board, or a live N1MM
-installation.
+Early, but in use. Confirmed on a FLEX-8600 with N1MM Logger+: function keys
+firing actions through the `fire` command, RX antenna changes on the active
+slice, and voice keyer playback.
 
-## Protocol assumptions not stated in the original spec
+Not yet confirmed on real hardware: the ANT1/ANT2 return cycle, ESC stopping
+the voice keyer, the connection light, multiFLEX station filtering, discovery,
+and KMtronic relays. The core is covered by unit tests against a mock radio.
 
-These come from general knowledge of the SmartSDR TCP/IP API and have only been
-tested against the mock radio, not real hardware:
+## Protocol assumptions
 
+These come from general knowledge of the SmartSDR TCP/IP API and from other
+open-source Flex clients, not from FlexRadio documentation:
+
+- The `info` reply is comma separated `key=value` pairs including `name=` (nickname) and `model=` (format as parsed by AetherSDR).
 - Station names in `client` status lines encode spaces as `0x7F`; they are decoded before comparing.
 - A slice is dropped from the table on `in_use=0`, a client on `client <handle> disconnected`.
 - Slices are matched to a station by comparing the slice's `client_handle` with the handle in `client 0x<handle> connected ... station=<name>`.
