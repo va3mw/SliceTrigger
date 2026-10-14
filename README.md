@@ -29,7 +29,7 @@ no installer and no runtime are needed.
 
 1. Copy `SliceTrigger.exe` to a path **without spaces**, e.g. `C:\Ham\SliceTrigger.exe`, and start it.
    Leave it running while you operate; the function keys talk to the running instance.
-2. Enter the radio IP (or click **Discover**), optionally a SmartSDR **Station** name (needed for multiFLEX), and click **Connect**.
+2. Enter the radio IP (or click **Discover**), leave **Station** empty (see [Not yet supported](#not-yet-supported)), and click **Connect**.
    The light turns green and the radio's name appears when connected. Start SmartSDR first; if actions
    report "no active slice" right after connecting, click Disconnect and Connect again.
 3. Recommended: **Settings > Install .exe in %APPDATA%** copies SliceTrigger and your settings to
@@ -146,8 +146,9 @@ The reply is 200 if everything succeeded, 404 for an unknown action, 500 if an a
 Slice resolution: "Active" is the slice reporting `active=1` (the one selected
 in SmartSDR), never the TX slice. With a Station set, only slices owned by that
 SmartSDR client are considered. Without one, "Active" fails if more than one
-client has an active slice (multiFLEX), and a letter picks the lowest-numbered
-match, so set the Station when running multiFLEX.
+client has an active slice, and a letter picks the lowest-numbered match. The
+Station filter is groundwork for multiFLEX, which is not yet tested or
+supported.
 
 RX antenna cycle (the default for a new RX antenna action): tick "Cycle" and
 the antennas to switch to, e.g. RX_A and RX_B. The slice's main antenna, ANT1
@@ -236,8 +237,18 @@ firing actions through the `fire` command, RX antenna changes on the active
 slice, and voice keyer playback.
 
 Not yet confirmed on real hardware: the ANT1/ANT2 return cycle, ESC stopping
-the voice keyer, the connection light, multiFLEX station filtering, discovery,
-and KMtronic relays. The core is covered by unit tests against a mock radio.
+the voice keyer, the connection light, discovery, and KMtronic relays. The core
+is covered by unit tests against a mock radio.
+
+### Not yet supported
+
+- **multiFLEX** (two or more SmartSDR clients on one radio) is not tested or
+  supported. SliceTrigger has a Station filter for it, but it has never been
+  tried with a second client. Support may come in a future version; until then,
+  use SliceTrigger with a single SmartSDR client and leave Station empty.
+- **Diversity reception** is not yet tested. RX antenna and other slice actions
+  have not been tried on a slice in diversity mode, so behaviour there is
+  unknown.
 
 ## Protocol assumptions
 
