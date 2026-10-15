@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SliceTrigger</title>
+<meta name="description" content="N1MM Logger+ function keys for your FlexRadio and station gear. Keep your hands on the keyboard.">
+<meta property="og:title" content="SliceTrigger">
+<meta property="og:description" content="N1MM Logger+ function keys for your FlexRadio. Keep your hands on the keyboard.">
+<meta property="og:image" content="https://va3mw.github.io/SliceTrigger/icon.png">
+<link rel="icon" href="icon.png" type="image/png">
+<style>
+:root {
+  --bg: #0f1218;
+  --bg2: #151a23;
+  --card: #1a202b;
+  --line: #2a3242;
+  --text: #e3e9f3;
+  --dim: #94a1b8;
+  --faint: #5e6a82;
+  --st: #3f8cff;
+  --ant: #3fb6ff;
+  --dvk: #ff8a3d;
+  --cmd: #b48cff;
+  --on: #3ddc84;
+  --amp: #ffc23d;
+  --bad: #ff5468;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+a { color: var(--ant); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-size: 14px; }
+code { background: #ffffff10; padding: 1px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+/* ---- hero ---- */
+header {
+  position: relative; padding: 64px 0 40px; text-align: center;
+  background:
+    radial-gradient(600px 300px at 15% 0%, #3f8cff26, transparent 70%),
+    radial-gradient(600px 300px at 85% 10%, #3ddc841f, transparent 70%),
+    radial-gradient(500px 260px at 50% 100%, #ff8a3d18, transparent 70%);
+}
+.logo { width: 88px; height: 88px; filter: drop-shadow(0 10px 30px #0008); }
+h1 {
+  font-size: clamp(40px, 7vw, 64px); line-height: 1.05; margin: 16px 0 10px; letter-spacing: -1px;
+  background: linear-gradient(90deg, var(--st), var(--ant) 50%, var(--on));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.tag { font-size: clamp(18px, 2.6vw, 22px); color: var(--text); margin: 0 auto 8px; max-width: 640px; }
+.sub { color: var(--dim); margin: 0 auto 28px; max-width: 620px; }
+.btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 10px;
+  font-weight: 600; border: 1px solid var(--line); color: var(--text); background: var(--card);
+}
+.btn:hover { text-decoration: none; border-color: var(--ant); }
+.btn.go { background: linear-gradient(135deg, #1d5fd1, #3f8cff); border-color: #3f8cff; color: #fff; box-shadow: 0 8px 24px #3f8cff33; }
+.btn.go:hover { filter: brightness(1.08); }
+.meta { margin-top: 14px; color: var(--faint); font-size: 14px; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--amp); border: 1px solid #ffc23d55; background: #ffc23d14; border-radius: 99px; padding: 2px 10px; margin-bottom: 10px; }
+
+.shot {
+  margin: 40px auto 0; max-width: 760px; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--line); box-shadow: 0 30px 80px #000a, 0 0 0 6px #ffffff06; background: #fff;
+}
+.shot img { display: block; width: 100%; height: auto; }
+.bar { height: 30px; background: #1b2130; display: flex; align-items: center; gap: 7px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.bar i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; }
+.bar i:nth-child(2) { background: #febc2e; } .bar i:nth-child(3) { background: #28c840; }
+.bar span { margin-left: 8px; color: var(--faint); font-size: 12px; }
+
+/* ---- sections ---- */
+section { padding: 64px 0; }
+section.alt { background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+h2 { font-size: 30px; margin: 0 0 8px; letter-spacing: -.3px; }
+.lead { color: var(--dim); margin: 0 0 32px; max-width: 680px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px;
+  border-top: 3px solid var(--c);
+}
+.card h3 { margin: 0 0 6px; font-size: 17px; display: flex; align-items: center; gap: 10px; }
+.card h3 b { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 15px; flex: none;
+  background: color-mix(in srgb, var(--c) 20%, transparent); color: var(--c); }
+.card p { margin: 0; color: var(--dim); font-size: 15px; }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+@media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 6px; font-weight: 600;
+  color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+
+/* antenna cycle */
+.cycle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 18px; }
+.cycle span { padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 14px;
+  background: var(--card); border: 1px solid var(--line); }
+.cycle span.home { color: var(--on); border-color: #3ddc8466; }
+.cycle span.rx { color: var(--ant); border-color: #3fb6ff55; }
+.cycle em { color: var(--faint); font-style: normal; }
+.status { display: grid; gap: 8px; }
+.status div { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 14px; }
+.status b { display: inline-block; min-width: 170px; padding: 3px 10px; border-radius: 4px; color: #fff; font-size: 13px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--dim); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
+.tbl { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+
+pre { background: #0b0e13; border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; overflow-x: auto; margin: 0 0 16px; color: #cfe3ff; }
+pre .c { color: var(--faint); }
+
+.tested { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.tested div { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.tested b { display: block; }
+.tested span { color: var(--dim); font-size: 14px; }
+.ok { color: var(--on); } .todo { color: var(--amp); } .no { color: var(--bad); }
+
+footer { padding: 36px 0 48px; color: var(--faint); font-size: 14px; text-align: center; }
+footer img { width: 28px; vertical-align: middle; margin-right: 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <img class="logo" src="icon.png" alt="">
+    <h1>SliceTrigger</h1>
+    <p class="tag">Keep your hands on the keyboard.</p>
+    <p class="sub">N1MM Logger+ function keys for your FlexRadio and station gear. Switch receive antennas, fire the voice keyer and drive relays from one key press, without reaching for the mouse.</p>
+    <span class="pill">Early release · open source</span>
+    <div class="btns">
+      <a class="btn go" href="https://github.com/va3mw/SliceTrigger/releases/latest/download/SliceTrigger.exe">⬇ Download for Windows</a>
+      <a class="btn" href="https://github.com/va3mw/SliceTrigger">View on GitHub</a>
+    </div>
+    <div class="meta">Windows 10/11 · single .exe, no installer · free, MIT licensed · updates itself</div>
+    <div class="shot">
+      <div class="bar"><i></i><i></i><i></i><span>SliceTrigger, connected</span></div>
+      <img src="screenshot-main.png" width="600" height="130" alt="SliceTrigger main window: radio IP, Discover, Disconnect, a green status showing F4-520 (AU-520), and an RX antenna action">
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>What one key press can do</h2>
+    <p class="lead">Every time you reach for the mouse to click something in SmartSDR you lose rhythm, and sometimes a QSO. SliceTrigger sits next to N1MM, keeps a connection to your radio, and runs an action the moment N1MM sends a function key to it.</p>
+    <div class="grid">
+      <div class="card" style="--c: var(--ant)"><h3><b>⇄</b>Receive antennas</h3><p>Step the active slice out to your receive antennas and back: ANT1 → RX_A → RX_B → ANT1. Compare a weak one on the Beverage, then press once more to return to your main antenna. TX is never touched.</p></div>
+      <div class="card" style="--c: var(--dvk)"><h3><b>▶</b>Voice keyer</h3><p>Play any of the radio's 12 DVK memories from a function key. Press <b>ESC</b>, the key you already use in N1MM, and playback stops.</p></div>
+      <div class="card" style="--c: var(--cmd)"><h3><b>›_</b>Radio commands</h3><p>Send any SmartSDR command to the active slice, such as the noise blanker, filters or AGC. Chain several on one key with <code>;</code>.</p></div>
+      <div class="card" style="--c: var(--amp)"><h3><b>⏻</b>Station gear</h3><p>Switch KMtronic network relays, or send an HTTP request or raw TCP data to antenna switches, amplifiers and anything else on your LAN.</p></div>
+      <div class="card" style="--c: var(--on)"><h3><b>●</b>Always know it's live</h3><p>A small window with a green, amber or red status and the radio's name, plus a matching badge on the taskbar button. It reconnects by itself if the radio drops.</p></div>
+      <div class="card" style="--c: var(--st)"><h3><b>↻</b>Set and forget</h3><p>One click installs it to <code>%APPDATA%</code> with a desktop shortcut. <b>Copy N1MM macro</b> writes the function key line for you, and <b>Check for updates</b> fetches new versions from GitHub.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap split">
+    <div>
+      <h2>The antenna cycle</h2>
+      <p class="lead" style="margin-bottom: 18px">Tick the antennas you want to visit. Home is whichever main antenna the slice was on, and the press after the last one always brings you back.</p>
+      <div class="cycle">
+        <span class="home">ANT1</span><em>→</em><span class="rx">RX_A</span><em>→</em><span class="rx">RX_B</span><em>→</em><span class="home">ANT1</span>
+      </div>
+      <p class="lead" style="margin-bottom: 0">Switch the slice to ANT2 in SmartSDR and ANT2 becomes home. XVTA and XVTB can be part of the loop too, and antennas the radio doesn't offer on that slice are skipped.</p>
+    </div>
+    <div>
+      <h2>At a glance</h2>
+      <p class="lead" style="margin-bottom: 18px">The status next to Connect, and the badge on the taskbar button, tell you whether a key press will land.</p>
+      <div class="status">
+        <div><b style="background:#1e9e3a">● F4-520 (AU-520)</b>connected, with the radio's name</div>
+        <div><b style="background:#d08600">● Connecting…</b>connecting or reconnecting</div>
+        <div><b style="background:#c62828">● Not connected</b>disconnected</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Getting started</h2>
+    <p class="lead">Settings and actions are saved in <code>%APPDATA%\SliceTrigger</code>.</p>
+    <div class="grid">
+      <div class="card" style="--c: var(--ant)"><h3><b>1</b>Install</h3><p>Download <code>SliceTrigger.exe</code> and run it. Windows SmartScreen may ask once, because the exe is not code-signed. Choose <b>Settings › Install .exe in %APPDATA%</b>.</p></div>
+      <div class="card" style="--c: var(--on)"><h3><b>2</b>Connect</h3><p>Start SmartSDR, then type the radio's IP address or press <b>Discover</b>, and press <b>Connect</b>. The status turns green.</p></div>
+      <div class="card" style="--c: var(--dvk)"><h3><b>3</b>Add a key</h3><p><b>Action › Add</b>, try it with <b>Test</b>, then <b>Copy N1MM macro</b> and paste the line into N1MM's function key editor. Change <code>F1</code> to the key you want.</p></div>
+    </div>
+<pre style="margin-top: 24px"><span class="c"># an N1MM function key line, as Copy N1MM macro writes it</span>
+F6 RX Antenna,"C:\Users\you\AppData\Roaming\SliceTrigger\SliceTrigger.exe fire 1"</pre>
+    <p class="lead" style="margin: 0">N1MM can't run an exe from a path that contains a space. If your Windows user name has one, keep SliceTrigger in a folder such as <code>C:\Ham</code> instead.</p>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Tested so far</h2>
+    <p class="lead">An early release, used in the shack with N1MM Logger+. Here is where it stands.</p>
+    <div class="tested">
+      <div><b class="ok">Working</b><span>Function keys firing actions from N1MM, RX antenna changes and the antenna cycle on the active slice, the voice keyer, and ESC to stop it.</span></div>
+      <div><b class="todo">Still to check</b><span>Radio discovery, KMtronic relays, and the Windows 11 title bar colouring.</span></div>
+      <div><b class="no">Not supported yet</b><span>multiFLEX (two or more SmartSDR clients on one radio). Diversity reception is not yet tested. Use a single SmartSDR client.</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="lead">For the curious and for anyone writing their own client. The voice keyer commands come from two open-source Flex clients, <a href="https://github.com/aethersdr/AetherSDR">AetherSDR</a> and <a href="https://github.com/kgbvax/StationA">StationA</a>, not from FlexRadio documentation; the full list of assumptions is in the <a href="https://github.com/va3mw/SliceTrigger#protocol-assumptions">README</a>.</p>
+    <div class="tbl">
+      <table>
+        <tr><th>Step</th><th>What happens</th></tr>
+        <tr><td>Key press</td><td>N1MM runs <code>SliceTrigger.exe fire 1</code>. That copy sends <code>GET http://127.0.0.1:8765/fire/1</code> to the running window and exits; nothing else on the network can reach the port.</td></tr>
+        <tr><td>Connect</td><td>TCP <code>4992</code>, then <code>sub client all</code>, <code>sub slice all</code>, <code>sub dvk all</code> and <code>info</code> for the radio's name and model. A <code>ping</code> every 10 s keeps the link honest.</td></tr>
+        <tr><td>Active slice</td><td>The slice reporting <code>active=1</code>, never the TX slice. Status lines are partial, so key=value pairs are merged per slice.</td></tr>
+        <tr><td>RX antenna</td><td><code>slice set &lt;index&gt; rxant=RX_A</code>, starting from the slice's current <code>rxant</code> and skipping anything not in its <code>ant_list</code>.</td></tr>
+        <tr><td>Voice keyer</td><td><code>dvk playback_start id=N</code> to play, <code>dvk playback_stop</code> to stop. ESC is watched system-wide, never swallowed, and only acts while a memory is playing.</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Build from source</h2>
+    <p class="lead">Plain Go with <a href="https://github.com/lxn/walk">walk</a> for the native Windows UI. The Windows build cross-compiles from macOS or Linux, and no C compiler is needed.</p>
+<pre><span class="c"># tests, including a mock Flex radio on a local port</span>
+go test -race ./...
+
+<span class="c"># Windows exe, icon and VERSION file</span>
+./build.sh                       <span class="c"># or build.bat on Windows</span></pre>
+    <div class="chips">
+      <span class="chip" style="--c: var(--ant)">Go</span>
+      <span class="chip" style="--c: var(--cmd)">walk</span>
+      <span class="chip" style="--c: var(--dvk)">SmartSDR API</span>
+      <span class="chip" style="--c: var(--on)">N1MM Logger+</span>
+      <span class="chip" style="--c: var(--amp)">MIT</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <img src="icon.png" alt="">Made by Mike VA3MW and Claude · <a href="https://github.com/va3mw/SliceTrigger">github.com/va3mw/SliceTrigger</a><br>
+    MIT licensed · FlexRadio and SmartSDR are trademarks of FlexRadio Systems. N1MM Logger+ is by the N1MM Logger team.
+  </div>
+</footer>
+
+</body>
+</html>

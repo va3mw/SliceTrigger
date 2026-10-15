@@ -2,6 +2,8 @@
 
 <img src="docs/icon.png" width="96" align="right" alt="SliceTrigger icon">
 
+**Website: <https://va3mw.github.io/SliceTrigger/>**
+
 Lets N1MM Logger+ function keys trigger actions on devices N1MM cannot control
 via CAT. One key press can:
 
@@ -234,7 +236,7 @@ On non-Windows systems `go build` produces a headless build (no GUI) for develop
 
 ## Status
 
-Early, but in use. Tested on a FLEX-8600 with N1MM Logger+: function keys
+Early, but in use. Tested on an Aurora AU-520 with N1MM Logger+: function keys
 firing actions through the `fire` command, RX antenna changes on the active
 slice including the ANT1/ANT2 return cycle, and the voice keyer (DVK)
 including ESC to stop playback.
